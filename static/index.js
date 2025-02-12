@@ -1,13 +1,3 @@
-function uploadCover(input) {
-    const file = input.files[0];
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        const base64 = e.target.result.split(',')[1];
-        updateVideo(input.dataset.filename, { cover: base64 });
-    };
-    reader.readAsDataURL(file);
-}
-
 function updateVideo(filename, data) {
     data.filename = filename;
     fetch('/update', {
@@ -30,41 +20,55 @@ tagInputs.forEach(input => {
     });
 });
 
+
+//捕获帧
+let currentVideoFilename = null;
+
+// 打开模态框并设置视频
 function playVideo(filename) {
-    // 调用后端 API 获取视频文件
-    fetch(`/play/${filename}`)
-        .then(response => response.blob())
-        .then(blob => {
-            // 创建一个 URL 对象，指向视频文件的 blob 数据
-            const url = URL.createObjectURL(blob);
-
-            // 获取模态框和视频播放器元素
-            const modal = document.getElementById('videoModal');
-            const videoPlayer = document.getElementById('videoPlayer');
-
-            // 设置视频播放器的 source 为视频 URL
-            videoPlayer.src = url;
-
-            // 显示模态框
-            modal.style.display = "block";
-
-            // 播放视频
-            videoPlayer.play();
-        })
-        .catch(error => {
-            console.error('Error fetching video:', error);
-            alert('视频加载失败，请稍后重试。');
-        });
+    currentVideoFilename = filename;
+    const videoPlayer = document.getElementById('videoPlayer');
+    videoPlayer.src = `/play/${filename}`;
+    document.getElementById('videoModal').style.display = 'block';
 }
 
+// 关闭模态框
 function closeModal() {
-    const modal = document.getElementById('videoModal');
+    document.getElementById('videoModal').style.display = 'none';
     const videoPlayer = document.getElementById('videoPlayer');
-
-    // 停止视频播放
     videoPlayer.pause();
-    videoPlayer.src = "";  // 清空 video 标签的 src，防止继续加载
+    videoPlayer.currentTime = 0;
+}
 
-    // 关闭模态框
-    modal.style.display = "none";
+// 捕获当前帧
+function captureFrame() {
+    const videoPlayer = document.getElementById('videoPlayer');
+    const canvas = document.createElement('canvas');
+    canvas.width = videoPlayer.videoWidth;
+    canvas.height = videoPlayer.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(videoPlayer, 0, 0, canvas.width, canvas.height);
+
+    // 将画布内容转换为 Base64 格式
+    const base64Image = canvas.toDataURL('image/jpeg');
+
+    // 调用后端 API 更新封面
+    fetch('/update', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            filename: currentVideoFilename,
+            cover: base64Image.split(',')[1], // 去掉 Base64 的前缀
+        }),
+    })
+        .then((response) => response.json())
+        .then((data) => {
+            if (data.success) {
+                location.reload(); // 刷新页面以显示新封面
+            } else {
+                alert('封面更新失败！');
+            }
+        });
 }
