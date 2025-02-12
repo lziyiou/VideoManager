@@ -2,14 +2,21 @@
 <html>
 <head>
     <title>视频管理系统</title>
-<!--    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/ico">-->
+    <!-- 顶标logo -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0%' y1='0%' x2='100%' y2='100%'><stop offset='0%' stop-color='%23FF6F61'/><stop offset='100%' stop-color='%23FFC107'/></linearGradient></defs><circle cx='50' cy='50' r='45' fill='url(%23g)'/><path d='M40 40 L65 50 L40 60 Z' fill='%23FFFFFF'/><circle cx='50' cy='50' r='15' fill='%23FFFFFF'/><circle cx='50' cy='50' r='8' fill='url(%23g)'/><path d='M50 25 A25 25 0 0 1 50 75 A25 25 0 0 1 50 25 Z' fill='none' stroke='%23FFFFFF' stroke-width='4'/></svg>" type="image/svg+xml">
+    <!-- 引入样式 -->
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <script src="{{ url_for('static', filename='index.js') }}"></script>
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
 </head>
 <body>
+
 <div class="container">
     <h1>我的视频库</h1>
+    <!-- 搜索框 -->
+    <div class="search-bar">
+        <label for="tagSearch">按标签搜索：</label>
+        <select id="tagSearch" class="tags-select" multiple data-placeholder="选择标签"></select>
+    </div>
     <div class="video-grid">
         {% for video in videos %}
         <div class="video-card">
@@ -39,5 +46,9 @@
         <button id="captureFrameBtn" onclick="captureFrame()">捕获封面</button>
     </div>
 </div>
+<!-- 引入脚本 -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+<script src="{{ url_for('static', filename='index.js') }}"></script>
 </body>
 </html>

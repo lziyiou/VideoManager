@@ -82,6 +82,17 @@ def play(filename):
     )
 
 
+@app.route('/get-tags', methods=['GET'])
+def get_tags():
+    # 从数据库中提取所有标签
+    all_tags = set()
+    videos = Video.query.all()
+    for video in videos:
+        if video.tags:
+            all_tags.update(video.tags.split(','))
+    return jsonify(list(all_tags))
+
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()

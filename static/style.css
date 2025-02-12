@@ -110,3 +110,64 @@ video {
     text-decoration: none;
     cursor: pointer;
 }
+
+.search-bar {
+    margin-bottom: 20px;
+}
+
+.search-bar input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+/* 搜索栏样式 */
+.search-bar {
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px; /* 标签和下拉框之间的间距 */
+}
+
+.search-bar label {
+    font-size: 16px;
+    color: #333;
+    white-space: nowrap; /* 防止标签换行 */
+}
+
+.search-bar .tags-select {
+    flex-grow: 1; /* 让下拉框占据剩余空间 */
+    min-width: 200px; /* 设置最小宽度 */
+}
+
+/* 修改 Select2 的宽度 */
+.select2-container {
+    width: 20% !important;
+}
+
+/* 修改下拉框的字体和颜色 */
+.select2-selection {
+    font-size: 14px;
+    color: #333;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 3px;
+}
+
+/* 修改下拉选项的背景色和字体 */
+.select2-results__option {
+    font-size: 14px;
+    color: #f59;
+}
+
+.select2-results__option--highlighted {
+    background-color: #007bff; /* 高亮选项的背景色 */
+    color: #fff;
+}
+
+/* 修改占位符的样式 */
+.select2-selection__placeholder {
+    color: #f38989;
+    font-style: italic;
+}
