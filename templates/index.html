@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>视频管理系统</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="{{ url_for('static', filename='index.js') }}"></script>
+</head>
+<body>
+<div class="container">
+    <h1>我的视频库</h1>
+    <div class="video-grid">
+        {% for video in videos %}
+        <div class="video-card">
+            <div class="cover" onclick="playVideo('{{ video.filename }}')">
+                {% if video.cover %}
+                <img src="{{ url_for('static', filename=video.cover) }}">
+                {% else %}
+                <div class="default-cover">点击播放视频</div>
+                {% endif %}
+            </div>
+            <div class="info">
+                <input type="file" class="cover-upload"
+                       data-filename="{{ video.filename }}"
+                       onchange="uploadCover(this)">
+                <input type="text" class="tags-input"
+                       value="{{ video.tags|join(',') }}"
+                       data-filename="{{ video.filename }}"
+                       placeholder="输入标签，用逗号分隔">
+                <div class="filename">{{ video.filename }}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+<!-- 模态框的 HTML 结构 -->
+<div id="videoModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeModal()">&times;</span>
+        <video id="videoPlayer" controls>
+            <!-- 视频将通过 JavaScript 设置 -->
+        </video>
+    </div>
+</div>
+</body>
+</html>
