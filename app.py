@@ -14,12 +14,33 @@ db = SQLAlchemy(app)
 os.makedirs(COVERS_FOLDER, exist_ok=True)
 
 
-# 数据库模型
+# 标签模型
+class Tag(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), unique=True, nullable=False)
+
+
+# 视频模型
 class Video(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255), nullable=False)
-    tags = db.Column(db.String(255))
     cover = db.Column(db.String(255))
+
+    # 多对多关系
+    tags = db.relationship(
+        'Tag',
+        secondary='video_tags',  # 中间表名称
+        backref=db.backref('videos', lazy='dynamic'),
+        lazy='dynamic'
+    )
+
+
+# 中间表
+video_tags = db.Table(
+    'video_tags',
+    db.Column('video_id', db.Integer, db.ForeignKey('video.id'), primary_key=True),
+    db.Column('tag_id', db.Integer, db.ForeignKey('tag.id'), primary_key=True)
+)
 
 
 # 自动生成视频封面
@@ -44,7 +65,7 @@ def index():
                     db.session.commit()
             videos.append({
                 'filename': f,
-                'tags': video.tags.split(',') if video and video.tags else [],
+                'tags': [tag.name for tag in video.tags] if video else [],
                 'cover': video.cover if video else ''
             })
     return render_template('index.html', videos=videos)
@@ -54,13 +75,23 @@ def index():
 def update():
     data = request.json
     video = Video.query.filter_by(filename=data['filename']).first()
-
     if not video:
         video = Video(filename=data['filename'])
         db.session.add(video)
 
     if 'tags' in data:
-        video.tags = ','.join(data['tags'])
+        # 获取或创建标签
+        tag_names = set(data['tags'])  # 去重
+        tags = []
+        for name in tag_names:
+            tag = Tag.query.filter_by(name=name).first()
+            if not tag:
+                tag = Tag(name=name)
+                db.session.add(tag)
+            tags.append(tag)
+
+        # 更新视频的标签
+        video.tags = tags
 
     if 'cover' in data:
         cover_path = f"covers/{data['filename']}.jpg"
@@ -70,6 +101,10 @@ def update():
         video.cover = cover_path
 
     db.session.commit()
+
+    # 清理未使用的标签
+    cleanup_unused_tags()
+
     return jsonify(success=True)
 
 
@@ -84,16 +119,52 @@ def play(filename):
 
 @app.route('/get-tags', methods=['GET'])
 def get_tags():
-    # 从数据库中提取所有标签
-    all_tags = set()
-    videos = Video.query.all()
-    for video in videos:
-        if video.tags:
-            all_tags.update(video.tags.split(','))
-    return jsonify(list(all_tags))
+    tags = [tag.name for tag in Tag.query.all()]
+    return jsonify(tags)
+
+
+@app.route('/delete_video/<filename>', methods=['DELETE'])
+def delete_video(filename):
+    try:
+        # 查询数据库中的视频记录
+        video = Video.query.filter_by(filename=filename).first()
+        if not video:
+            return jsonify(success=False, message="视频不存在"), 404
+
+        # 删除封面文件（如果存在）
+        cover_path = os.path.join(COVERS_FOLDER, f"{filename}.jpg")
+        if os.path.exists(cover_path):
+            os.remove(cover_path)
+
+        # 删除视频文件
+        video_path = os.path.join(VIDEO_FOLDER, filename)
+        if os.path.exists(video_path):
+            os.remove(video_path)
+
+        # 从数据库中删除记录
+        db.session.delete(video)
+        db.session.commit()
+
+        # 清理未使用的标签
+        cleanup_unused_tags()
+
+        return jsonify(success=True, message="视频删除成功")
+    except Exception as e:
+        return jsonify(success=False, message=f"删除失败: {str(e)}"), 500
+
+
+def cleanup_unused_tags():
+    """
+    清理未使用的标签（即没有关联任何视频的标签）
+    """
+    # 查询所有没有关联视频的标签
+    unused_tags = Tag.query.filter(~Tag.videos.any()).all()
+    for tag in unused_tags:
+        db.session.delete(tag)
+    db.session.commit()
 
 
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0', port=5000)

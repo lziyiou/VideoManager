@@ -48,15 +48,16 @@ body {
     padding: 15px;
 }
 
-.tags-input {
-    width: 100%;
-    padding: 5px;
-    margin-bottom: 5px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-}
+/*.tags-input {*/
+/*    width: 100%;*/
+/*    padding: 5px;*/
+/*    margin-bottom: 5px;*/
+/*    border: 1px solid #ddd;*/
+/*    border-radius: 4px;*/
+/*}*/
 
 .filename {
+    margin-top: 5px;
     font-size: 0.9em;
     color: #666;
     overflow: hidden;
@@ -123,23 +124,23 @@ video {
 }
 
 /* 搜索栏样式 */
-.search-bar {
-    margin-bottom: 20px;
-    display: flex;
-    align-items: center;
-    gap: 10px; /* 标签和下拉框之间的间距 */
-}
+/*.search-bar {*/
+/*    margin-bottom: 20px;*/
+/*    display: flex;*/
+/*    align-items: center;*/
+/*    gap: 10px; !* 标签和下拉框之间的间距 *!*/
+/*}*/
 
-.search-bar label {
-    font-size: 16px;
-    color: #333;
-    white-space: nowrap; /* 防止标签换行 */
-}
+/*.search-bar label {*/
+/*    font-size: 16px;*/
+/*    color: #333;*/
+/*    white-space: nowrap; !* 防止标签换行 *!*/
+/*}*/
 
-.search-bar .tags-select {
-    flex-grow: 1; /* 让下拉框占据剩余空间 */
-    min-width: 200px; /* 设置最小宽度 */
-}
+/*.search-bar .tags-select {*/
+/*    flex-grow: 1; !* 让下拉框占据剩余空间 *!*/
+/*    min-width: 200px; !* 设置最小宽度 *!*/
+/*}*/
 
 /* 修改 Select2 的宽度 */
 .select2-container {
@@ -170,4 +171,42 @@ video {
 .select2-selection__placeholder {
     color: #f38989;
     font-style: italic;
+}
+
+/* 让标签框和删除按钮排成一行 */
+.tags-and-delete {
+    display: flex;
+    align-items: center; /* 垂直居中对齐 */
+    gap: 10px; /* 设置间距 */
+}
+
+.tags-input {
+    flex-grow: 1; /* 输入框占据剩余空间 */
+    padding: 5px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.delete-btn {
+    background-color: #ff4d4d;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap; /* 防止按钮文字换行 */
+}
+
+.delete-btn:hover {
+    background-color: #ff1a1a;
+}
+
+/* 添加动画样式 */
+.video-card {
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.video-card.removing {
+    opacity: 0;
+    transform: scale(0.9);
 }

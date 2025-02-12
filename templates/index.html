@@ -7,19 +7,19 @@
     <!-- 引入样式 -->
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
 </head>
 <body>
-
 <div class="container">
     <h1>我的视频库</h1>
     <!-- 搜索框 -->
     <div class="search-bar">
         <label for="tagSearch">按标签搜索：</label>
-        <select id="tagSearch" class="tags-select" multiple data-placeholder="选择标签"></select>
+        <select id="tagSearch" class="tags-select" multiple data-placeholder="输入标签进行搜索"></select>
     </div>
     <div class="video-grid">
         {% for video in videos %}
-        <div class="video-card">
+        <div class="video-card" data-filename="{{ video.filename }}">
             <div class="cover" onclick="playVideo('{{ video.filename }}')">
                 {% if video.cover %}
                 <img src="{{ url_for('static', filename=video.cover) }}">
@@ -28,14 +28,21 @@
                 {% endif %}
             </div>
             <div class="info">
-                <input type="text" class="tags-input"
-                       value="{{ video.tags|join(',') }}"
-                       data-filename="{{ video.filename }}"
-                       placeholder="输入标签，用逗号分隔">
-                <div class="filename">{{ video.filename }}</div>
+                <div class="tags-and-delete">
+                    <input type="text" class="tags-input"
+                           value="{{ video.tags|join(',') }}"
+                           data-filename="{{ video.filename }}"
+                           placeholder="输入标签，用逗号分隔">
+                    <!-- 删除按钮 -->
+                    <button class="delete-btn" onclick="deleteVideo('{{ video.filename }}')">删除</button>
+                </div>
+                <div class="filename" title="{{ video.filename }}">{{ video.filename }}</div>
             </div>
         </div>
         {% endfor %}
+        <div id="no-results-message" style="display: none; text-align: center; margin-top: 20px; color: #888;">
+            没有找到符合条件的视频。
+        </div>
     </div>
 </div>
 <!-- 模态框的 HTML 结构 -->
@@ -49,6 +56,12 @@
 <!-- 引入脚本 -->
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-<script src="{{ url_for('static', filename='index.js') }}"></script>
+<script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lodash/lodash.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+<script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tags.js') }}"></script>
+<script src="{{ url_for('static', filename='js/video.js') }}"></script>
 </body>
 </html>
