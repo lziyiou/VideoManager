@@ -35,21 +35,27 @@ function playVideo(filename) {
     currentVideoFilename = filename;
     const videoPlayer = document.getElementById('videoPlayer');
     videoPlayer.src = `/play/${filename}`;
-    document.getElementById('videoModal').style.display = 'block';
+    const modal = document.getElementById('videoModal');
+
+    // 设置文件名称
+    const videoFilenameElement = document.getElementById('videoFilename');
+    videoFilenameElement.textContent = filename;
+    videoFilenameElement.title = filename;
+
+    modal.style.display = 'block';
+
+    // 阻止点击事件冒泡
+    event.stopPropagation();
 }
 
 // 关闭模态框
 function closeModal() {
-    document.getElementById('videoModal').style.display = 'none';
+    const modal = document.getElementById('videoModal');
+    modal.style.display = 'none';
     const videoPlayer = document.getElementById('videoPlayer');
     videoPlayer.pause();
     videoPlayer.currentTime = 0;
 }
-document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-        closeModal();
-    }
-});
 
 // 封面更新
 function captureFrame() {
@@ -115,3 +121,21 @@ function deleteVideo(filename) {
         }
     });
 }
+
+// 监听点击事件以关闭模态框
+document.addEventListener('click', (event) => {
+    const modal = document.getElementById('videoModal');
+    const modalContent = document.querySelector('.modal-content');
+
+    // 检查点击的目标是否是模态框外部
+    if (modal.style.display === 'block' && !modalContent.contains(event.target)) {
+        closeModal(); // 如果点击的是模态框外部，则关闭模态框
+    }
+});
+
+// Esc 键关闭模态框
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        closeModal();
+    }
+});

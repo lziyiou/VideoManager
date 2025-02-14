@@ -1,0 +1,71 @@
+/* 搜索栏样式 */
+.search-bar {
+    display: flex;
+    align-items: center; /* 垂直居中对齐 */
+    gap: 15px; /* 设置间距 */
+    margin-bottom: 20px; /* 与下方内容的间距 */
+    flex-wrap: wrap; /* 如果屏幕宽度不足，则换行 */
+}
+
+.search-bar label {
+    font-size: 14px;
+    white-space: nowrap; /* 防止文字换行 */
+    flex-shrink: 0; /* 防止标签被压缩 */
+}
+
+.search-bar input[type="text"] {
+    flex: 1; /* 占据剩余空间 */
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    min-width: 150px; /* 设置最小宽度，避免过窄 */
+}
+
+.search-bar input[type="text"]:focus {
+    border-color: #007bff;
+    outline: none;
+    box-shadow: 0 0 4px rgba(0, 123, 255, 0.25);
+}
+
+/* Select2 样式优化 */
+.select2-container {
+    width: 100% !important; /* 确保宽度自适应 */
+    flex: 2; /* 占据更多空间 */
+    min-width: 200px; /* 最小宽度 */
+}
+
+.select2-selection {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    height: auto; /* 自动调整高度 */
+}
+
+.select2-selection:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 4px rgba(0, 123, 255, 0.25);
+}
+
+/* 占位符样式 */
+.select2-selection__placeholder {
+    color: #aaa;
+    font-style: italic;
+}
+
+/* 响应式布局 */
+@media (max-width: 768px) {
+    .search-bar {
+        flex-direction: column; /* 在小屏幕上垂直排列 */
+        gap: 10px; /* 减小间距 */
+    }
+
+    .search-bar input[type="text"],
+    .select2-container {
+        flex: 1; /* 平分宽度 */
+        min-width: unset; /* 取消最小宽度限制 */
+    }
+}

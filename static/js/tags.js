@@ -12,7 +12,7 @@ function updateTags(filename, tags) {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                showSuccessMessage('标签更新成功！');
+                // showSuccessMessage('标签更新成功！');
                 // 更新 Select2 的标签列表
                 updateTagSearch();
             } else {
@@ -40,9 +40,6 @@ function removeDuplicatesFromString(input) {
 function updateTagSearch() {
     const tagSearch = document.getElementById('tagSearch');
 
-    // 清空现有的选项
-    tagSearch.innerHTML = '';
-
     // 从后端获取所有标签
     fetch('/get-tags', {
         method: 'GET',
@@ -54,13 +51,30 @@ function updateTagSearch() {
             }
             return response.json();
         })
-        .then(tags => {
-            // 动态添加标签到 Select2
-            tags.forEach(tag => {
+        .then(serverTags => {
+            // 获取当前 Select2 中的所有标签
+            const currentOptions = Array.from(tagSearch.options).map(option => option.value);
+
+            // 找出需要新增的标签（后端有但前端没有）
+            const tagsToAdd = serverTags.filter(tag => !currentOptions.includes(tag));
+
+            // 找出需要移除的标签（前端有但后端没有）
+            const tagsToRemove = currentOptions.filter(tag => !serverTags.includes(tag));
+
+            // 动态添加新标签
+            tagsToAdd.forEach(tag => {
                 const option = document.createElement('option');
                 option.value = tag;
                 option.textContent = tag;
                 tagSearch.appendChild(option);
+            });
+
+            // 移除多余的标签
+            tagsToRemove.forEach(tag => {
+                const optionToRemove = Array.from(tagSearch.options).find(option => option.value === tag);
+                if (optionToRemove) {
+                    tagSearch.removeChild(optionToRemove);
+                }
             });
 
             // 重新初始化 Select2
@@ -73,14 +87,56 @@ function updateTagSearch() {
 }
 
 /**
- * 过滤视频卡片
+ * 按名称模糊搜索视频
+ * @param {string} query - 用户输入的搜索关键字
+ */
+function searchByFilename(query) {
+    const videoCards = document.querySelectorAll('.video-card');
+
+    videoCards.forEach(card => {
+        const filename = card.querySelector('.filename').textContent.toLowerCase();
+        const isMatch = query.trim().toLowerCase() === '' || filename.includes(query.trim().toLowerCase());
+        card.dataset.nameMatch = isMatch; // 保存名称匹配状态
+    });
+}
+
+/**
+ * 过滤视频卡片（按标签）
  * @param {string[]} selectedTags - 用户选择的标签
  */
 function filterVideoCards(selectedTags) {
-    let hasVisibleCards = false;
-    document.querySelectorAll('.video-card').forEach(card => {
+    const videoCards = document.querySelectorAll('.video-card');
+
+    videoCards.forEach(card => {
         const cardTags = card.querySelector('.tags-input').value.split(',').map(tag => tag.trim());
-        if (selectedTags.length === 0 || selectedTags.every(tag => cardTags.includes(tag))) {
+        const isMatch = selectedTags.length === 0 || selectedTags.every(tag => cardTags.includes(tag));
+        card.dataset.tagMatch = isMatch; // 保存标签匹配状态
+    });
+}
+
+/**
+ * 整合名称和标签搜索结果
+ */
+function integrateSearchResults() {
+    const nameQuery = document.getElementById('nameSearch').value.trim().toLowerCase();
+    const tagSearch = document.getElementById('tagSearch');
+    const selectedTags = $(tagSearch).val() || [];
+
+    // 执行名称搜索
+    searchByFilename(nameQuery);
+
+    // 执行标签搜索
+    filterVideoCards(selectedTags);
+
+    // 整合结果
+    const videoCards = document.querySelectorAll('.video-card');
+    let hasVisibleCards = false;
+
+    videoCards.forEach(card => {
+        const isNameMatch = card.dataset.nameMatch === 'true'; // 名称是否匹配
+        const isTagMatch = card.dataset.tagMatch === 'true'; // 标签是否匹配
+
+        if (isNameMatch && isTagMatch) {
             card.style.display = 'block';
             hasVisibleCards = true;
         } else {
@@ -93,10 +149,52 @@ function filterVideoCards(selectedTags) {
     noResultsMessage.style.display = hasVisibleCards ? 'none' : 'block';
 }
 
-// 动态加载标签列表，并实现搜索功能
+// 初始化事件监听器
+document.addEventListener("DOMContentLoaded", function () {
+    // 防抖处理名称搜索
+    const nameSearchInput = document.getElementById('nameSearch');
+    const debouncedSearch = _.debounce(() => {
+        integrateSearchResults();
+    }, 300);
+
+    nameSearchInput.addEventListener('input', debouncedSearch);
+
+    // 标签选择事件
+    const tagSearch = document.getElementById('tagSearch');
+    $(tagSearch).on('change', () => {
+        integrateSearchResults();
+    });
+
+    // 动态加载标签列表
+    loadTags();
+
+    // 初始化 Select2
+    $(tagSearch).select2({
+        placeholder: "选择标签",
+        allowClear: true,
+    });
+
+    // 视频标签输入防抖
+    const tagInputs = document.querySelectorAll('.tags-input');
+    tagInputs.forEach(input => {
+        const debouncedUpdate = _.debounce(() => {
+            const filename = input.dataset.filename;
+            // 获取输入框中的标签并去重
+            const uniqueTags = removeDuplicatesFromString(input.value);
+            // 更新输入框内容
+            input.value = uniqueTags.join(',');
+            // 提交到后端
+            updateTags(filename, uniqueTags);
+        }, 1000);
+        input.addEventListener('input', debouncedUpdate);
+    });
+});
+
+/**
+ * 动态加载标签列表
+ */
 let currentPage = 1;
 const pageSize = 50;
-
 function loadTags(page = 1) {
     fetch(`/get-tags?page=${page}&limit=${pageSize}`)
         .then(response => response.json())
@@ -108,7 +206,6 @@ function loadTags(page = 1) {
                 option.textContent = tag;
                 tagSearch.appendChild(option);
             });
-
             // 如果还有更多数据，加载下一页
             if (tags.length === pageSize) {
                 currentPage++;
@@ -116,36 +213,3 @@ function loadTags(page = 1) {
             }
         });
 }
-
-document.addEventListener("DOMContentLoaded", function () {
-    loadTags();
-    $(tagSearch).select2({
-        placeholder: "选择标签",
-        allowClear: true,
-    });
-});
-
-// 防抖处理
-const tagInputs = document.querySelectorAll('.tags-input');
-tagInputs.forEach(input => {
-    const debouncedUpdate = _.debounce(() => {
-        const filename = input.dataset.filename;
-
-        // 获取输入框中的标签并去重
-        const uniqueTags = removeDuplicatesFromString(input.value);
-
-        // 更新输入框内容
-        input.value = uniqueTags.join(',');
-
-        // 提交到后端
-        updateTags(filename, uniqueTags);
-    }, 500);
-
-    input.addEventListener('input', debouncedUpdate);
-});
-
-// 标签选择事件
-$(tagSearch).on('change', function () {
-    const selectedTags = $(this).val() || [];
-    filterVideoCards(selectedTags);
-});

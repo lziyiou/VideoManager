@@ -1,6 +1,6 @@
 import base64
 
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_file
 from flask_sqlalchemy import SQLAlchemy
 import os
 from config import Config, VIDEO_FOLDER, COVERS_FOLDER
@@ -54,7 +54,7 @@ def generate_cover(video_path, cover_path):
 def index():
     videos = []
     for f in os.listdir(VIDEO_FOLDER):
-        if f.lower().endswith(('.mp4', '.avi', '.mkv')):
+        if f.lower().endswith(('.mp4', '.avi', '.mkv', 'ts', 'mpeg', 'ts', 'wmv')):
             video = Video.query.filter_by(filename=f).first()
             cover_path = os.path.join(COVERS_FOLDER, f"{f}.jpg")
             if not os.path.exists(cover_path):
@@ -110,10 +110,12 @@ def update():
 
 @app.route('/play/<filename>')
 def play(filename):
-    os.path.join(VIDEO_FOLDER, filename)
-    return send_from_directory(
-        VIDEO_FOLDER,  # 视频存储路径
-        filename,
+    video_path = os.path.join(VIDEO_FOLDER, filename)
+    return send_file(
+        video_path,
+        mimetype='video/mp4',
+        as_attachment=False,
+        conditional=True  # 启用范围请求
     )
 
 
@@ -139,7 +141,13 @@ def delete_video(filename):
         # 删除视频文件
         video_path = os.path.join(VIDEO_FOLDER, filename)
         if os.path.exists(video_path):
-            os.remove(video_path)
+            try:
+                os.remove(video_path)
+                print("文件删除成功:", video_path)
+            except PermissionError:
+                print("权限不足，无法删除文件:", video_path)
+            except Exception as e:
+                print("删除文件时发生未知错误:", str(e))
 
         # 从数据库中删除记录
         db.session.delete(video)
