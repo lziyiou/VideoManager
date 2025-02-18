@@ -58,4 +58,72 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    padding-right: 4px;
+}
+
+/* 标签输入区域样式 */
+.tags-and-delete {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 6px;
+    align-items: center;
+    min-height: 32px; /* 确保最小高度 */
+}
+
+.tags-input {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 13px;
+    transition: border-color 0.3s ease;
+    height: 24px;
+    line-height: 24px;
+    min-width: 0; /* 防止溢出 */
+    white-space: nowrap; /* 防止换行 */
+    overflow: hidden; /* 隐藏溢出内容 */
+    text-overflow: ellipsis; /* 显示省略号 */
+}
+
+.tags-input:focus {
+    border-color: #007bff;
+    outline: none;
+    box-shadow: 0 0 4px rgba(0, 123, 255, 0.25);
+    white-space: normal; /* 聚焦时允许换行 */
+    height: auto; /* 聚焦时自动调整高度 */
+    position: absolute; /* 聚焦时浮动 */
+    background: white;
+    z-index: 1;
+    width: calc(100% - 60px); /* 减去删除按钮的宽度和间距 */
+}
+
+/* 添加删除动画 */
+.removing {
+    animation: removeCard 0.3s ease-out forwards;
+}
+
+@keyframes removeCard {
+    0% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+}
+
+/* 删除按钮样式调整 */
+.delete-btn {
+    width: 32px;
+    height: 24px;
+    padding: 0;
+    border-radius: 4px;
+    color: #dc3545;
+}
+
+.delete-btn:hover {
+    background: #dc3545;
+    color: white;
+    border-color: #dc3545;
 }

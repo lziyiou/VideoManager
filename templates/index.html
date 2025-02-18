@@ -14,22 +14,31 @@
 
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet"/>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+    <!-- 添加 Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- 添加 Plyr CSS -->
+    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
 </head>
 <body>
 <div class="container">
     <!-- 搜索框 -->
     <div class="search-bar">
-        <label for="nameSearch">按名称搜索：</label>
-        <input type="text" id="nameSearch" placeholder="输入视频名称">
-        <label for="tagSearch">按标签搜索：</label>
-        <select id="tagSearch" class="tags-select" multiple data-placeholder="输入标签进行搜索"></select>
+        <div class="search-inputs">
+            <label for="nameSearch">按名称搜索：</label>
+            <input type="text" id="nameSearch" placeholder="输入视频名称">
+            <label for="tagSearch">按标签搜索：</label>
+            <select id="tagSearch" class="tags-select" multiple data-placeholder="输入标签进行搜索"></select>
+        </div>
+        <button class="clear-search-btn" onclick="window.videoSearch.clearSearch()" title="清空搜索条件">
+            <i class="fas fa-times-circle"></i>
+        </button>
     </div>
     <div class="video-grid">
         {% for video in videos %}
         <div class="video-card" data-filename="{{ video.filename }}">
-            <div class="cover" onclick="playVideo('{{ video.filename }}')">
+            <div class="cover" onclick="window.videoPlayer.playVideo('{{ video.filename }}')">
                 {% if video.cover %}
-                <img src="{{ url_for('static', filename=video.cover) }}">
+                <img src="{{ url_for('static', filename=video.cover) }}" alt="{{ video.filename }}">
                 {% else %}
                 <div class="default-cover">点击播放视频</div>
                 {% endif %}
@@ -41,7 +50,9 @@
                            data-filename="{{ video.filename }}"
                            placeholder="输入标签，用逗号分隔">
                     <!-- 删除按钮 -->
-                    <button class="delete-btn" onclick="deleteVideo('{{ video.filename }}')">删除</button>
+                    <button class="delete-btn" onclick="window.videoPlayer.deleteVideo('{{ video.filename }}')" title="删除视频">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
                 </div>
                 <div class="filename" title="{{ video.filename }}">{{ video.filename }}</div>
             </div>
@@ -51,18 +62,61 @@
             没有找到符合条件的视频。
         </div>
     </div>
+    
+    <!-- 添加分页控件 -->
+    <div class="pagination">
+        {% if total_pages > 1 %}
+            {% if current_page > 1 %}
+                <button class="page-btn" onclick="window.videoSearch.changePage({{ current_page - 1 }})" title="上一页">
+                    <i class="fas fa-chevron-up"></i>
+                </button>
+            {% endif %}
+            
+            {% set start = [current_page - 5, 1]|max %}
+            {% set end = [current_page + 5, total_pages]|min %}
+            
+            {% if start > 1 %}
+                <button class="page-btn" onclick="window.videoSearch.changePage(1)" title="第一页">
+                    <i class="fas fa-angle-double-up"></i>
+                </button>
+                {% if start > 2 %}
+                    <span class="page-ellipsis">•••</span>
+                {% endif %}
+            {% endif %}
+            
+            {% for page in range(start, end + 1) %}
+                <button class="page-btn {% if page == current_page %}active{% endif %}" 
+                        onclick="window.videoSearch.changePage({{ page }})" title="第{{ page }}页">
+                    {{ page }}
+                </button>
+            {% endfor %}
+            
+            {% if end < total_pages %}
+                {% if end < total_pages - 1 %}
+                    <span class="page-ellipsis">•••</span>
+                {% endif %}
+                <button class="page-btn" onclick="window.videoSearch.changePage({{ total_pages }})" title="最后一页">
+                    <i class="fas fa-angle-double-down"></i>
+                </button>
+            {% endif %}
+            
+            {% if current_page < total_pages %}
+                <button class="page-btn" onclick="window.videoSearch.changePage({{ current_page + 1 }})" title="下一页">
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+            {% endif %}
+        {% endif %}
+    </div>
 </div>
 <!-- 模态框的 HTML 结构 -->
 <div id="videoModal" class="modal">
     <div class="modal-content">
         <!-- 文件名称 -->
         <div class="video-filename" id="videoFilename"></div>
-        <!-- 关闭按钮 -->
-        <span class="close" onclick="closeModal()">&times;</span>
         <!-- 视频播放器 -->
-        <video id="videoPlayer" controls autoplay></video>
-        <!-- 捕获封面按钮 -->
-        <button id="captureFrameBtn" onclick="captureFrame()">捕获封面</button>
+        <video id="videoPlayer" playsinline controls>
+            <source src="" type="video/mp4" />
+        </video>
     </div>
 </div>
 <!-- 引入脚本 -->
@@ -72,8 +126,15 @@
 <script src="https://cdn.jsdelivr.net/npm/lodash/lodash.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
-<script src="{{ url_for('static', filename='js/notifications.js') }}"></script>
-<script src="{{ url_for('static', filename='js/tags.js') }}"></script>
-<script src="{{ url_for('static', filename='js/video.js') }}"></script>
+<script src="{{ url_for('static', filename='js/utils.js') }}"></script>
+<script src="{{ url_for('static', filename='js/tagManager.js') }}"></script>
+<script src="{{ url_for('static', filename='js/videoPlayer.js') }}"></script>
+<script src="{{ url_for('static', filename='js/search.js') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+
+<!-- 在其他脚本之前添加 Plyr -->
+<script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
+
+<!-- 现有的其他脚本 -->
 </body>
 </html>
