@@ -1,9 +1,10 @@
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from ..models.setting import Setting
+from ..models.setting import Setting, Base
 from ..models.video import Video
-from ..models.setting import Base
+from ..models.tag import Tag
+from ..models.tag_category import TagCategory
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///./video_manager.db"
 

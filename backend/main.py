@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 import uvicorn
+from app.core.database import init_db  # 确保数据库初始化
 from app.api.settings import settingsRouter
 from app.api.videos import videosRouter
 from app.api.tags import tagsRouter
