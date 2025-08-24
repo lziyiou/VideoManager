@@ -101,11 +101,11 @@ class VideoService:
                 size = os.path.getsize(filepath) / (1024 * 1024)
                 duration = VideoService.get_video_duration(filepath)
                 if duration > 0:
-                    thumbnail_path = VideoService.generate_thumbnail(filepath)
+                    # 扫描时不生成缩略图，只保存基本信息
                     if video:
                         video.size = round(size, 2)
                         video.duration = duration
-                        video.thumbnail_path = thumbnail_path
+                        # 保持原有的缩略图路径，不在扫描时重新生成
                         video.updated_at = datetime.now()
                     else:
                         video = Video(
@@ -113,7 +113,8 @@ class VideoService:
                             filepath=filepath,
                             size=round(size, 2),
                             duration=duration,
-                            thumbnail_path=thumbnail_path,
+                            thumbnail_path=None,  # 扫描时不生成缩略图
+                            thumbnail_generated=False,  # 标记缩略图未生成
                             updated_at=datetime.now()
                         )
                         db.add(video)

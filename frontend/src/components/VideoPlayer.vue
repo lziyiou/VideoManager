@@ -20,7 +20,7 @@
 </template>
 
 <script setup>
-import { ref, defineProps, defineEmits, watchEffect, onMounted, onBeforeUnmount } from 'vue'
+import { ref, watchEffect, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import axios from 'axios'
 import Plyr from 'plyr'
@@ -47,6 +47,7 @@ const playerContainer = ref(null)
 const loading = ref(true)
 const videoUrl = ref('')
 let player = null
+let isClosing = ref(false)  // 添加关闭状态标志
 
 // 使用potplayer打开视频
 const openInPotplayer = () => {
@@ -344,6 +345,8 @@ async function uploadClipboardImage() {
 
 // 处理关闭对话框
 const handleClose = () => {
+  isClosing.value = true  // 设置关闭状态标志
+  
   if (player) {
     // 暂停播放
     player.pause()
@@ -368,6 +371,12 @@ const handleClose = () => {
   if (playerContainer.value) {
     playerContainer.value.innerHTML = ''
   }
+  
+  // 重置关闭状态标志
+  setTimeout(() => {
+    isClosing.value = false
+  }, 100)
+  
   emit('update:visible', false)
 }
 
@@ -391,6 +400,8 @@ const detectVideoType = (url) => {
 const loadVideo = (videoId, retryCount = 0) => {
   if (!videoId || !playerContainer.value) return
   
+  // 重置关闭状态标志
+  isClosing.value = false
   loading.value = true
   const timestamp = new Date().getTime()
   videoUrl.value = `/api/videos/${videoId}/stream?t=${timestamp}`
@@ -414,7 +425,13 @@ const loadVideo = (videoId, retryCount = 0) => {
   }
   
   newPlayer.on('error', (error) => {
+    // 如果正在关闭对话框，不显示错误信息和重试，也不输出控制台错误
+    if (isClosing.value) {
+      return
+    }
+    
     console.error('视频加载错误:', error)
+    
     if (retryCount < 2) {
       ElMessage.warning(`视频加载失败，正在进行第${retryCount + 1}次重试...`)
       setTimeout(() => loadVideo(videoId, retryCount + 1), 1500)

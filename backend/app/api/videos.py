@@ -103,18 +103,38 @@ def update_video_web_playable(video_id: int, web_playable: bool, db: Session = D
 
 @videosRouter.get("/{video_id}/thumbnail", summary="获取视频缩略图")
 def get_video_thumbnail(video_id: int, db: Session = Depends(get_db)):
-    """获取视频缩略图"""
+    """获取视频缩略图，按需生成"""
     
-    # 获取缩略图
-    thumbnail_path = VideoService.get_thumbnail(db, video_id)
-    if not thumbnail_path or not os.path.exists(thumbnail_path):
-        # 尝试生成缩略图
-        video = VideoService.get_video_by_id(db, video_id)
+    # 获取视频信息
+    video = VideoService.get_video_by_id(db, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    # 检查是否已有缩略图且文件存在
+    if video.thumbnail_generated and video.thumbnail_path and os.path.exists(video.thumbnail_path):
+        return FileResponse(video.thumbnail_path)
+    
+    # 按需生成缩略图
+    try:
         thumbnail_path = VideoService.generate_thumbnail(video.filepath)
-        if not thumbnail_path:
+        if thumbnail_path and os.path.exists(thumbnail_path):
+            # 更新数据库中的缩略图路径和状态
+            video.thumbnail_path = thumbnail_path
+            video.thumbnail_generated = True
+            db.commit()
+            logger.info(f"Generated thumbnail for video {video_id}: {thumbnail_path}")
+            return FileResponse(thumbnail_path)
+        else:
+            # 标记生成失败，避免重复尝试
+            video.thumbnail_generated = False
+            db.commit()
             raise HTTPException(status_code=500, detail="Failed to generate thumbnail")
-    
-    return FileResponse(thumbnail_path)
+    except Exception as e:
+        # 标记生成失败
+        video.thumbnail_generated = False
+        db.commit()
+        logger.error(f"Error generating thumbnail for video {video_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate thumbnail")
 
 @videosRouter.get("/{video_id}/stream", summary="流式播放视频")
 async def stream_video(video_id: int, request: Request, db: Session = Depends(get_db)):

@@ -81,6 +81,7 @@ VideoManager/
    git clone
    git clone URL_ADDRESS.com/yourusername/VideoManager.git
    ```
+2. 直接运行start.bat文件即可以启动项目（若成功，则跳过2-7步，可直接从第8步访问项目）
 2. 进入后端目录
    ```bash
    cd VideoManager/backend

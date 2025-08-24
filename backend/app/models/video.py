@@ -13,6 +13,7 @@ class Video(Base):
     size = Column(Float)  # 文件大小（MB）
     duration = Column(Float)  # 视频时长（秒）
     thumbnail_path = Column(String, nullable=True)  # 缩略图路径
+    thumbnail_generated = Column(Boolean, default=False)  # 缩略图是否已生成
     is_favorite = Column(Boolean, default=False)  # 是否收藏
     web_playable = Column(Boolean, default=True)  # 是否可以在网页播放
     created_at = Column(DateTime, default=datetime.utcnow)

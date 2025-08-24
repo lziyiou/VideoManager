@@ -17,10 +17,14 @@ export default {
   /**
    * 创建新标签
    * @param {string} name - 标签名称
+   * @param {number|null} categoryId - 分类ID（可选）
    */
-  async createTag(name) {
+  async createTag(name, categoryId = null) {
     try {
-      const response = await apiClient.post('/tags/', { name });
+      const response = await apiClient.post('/tags/', { 
+        name, 
+        category_id: categoryId 
+      });
       return response.data;
     } catch (error) {
       // console.error('创建标签失败:', error); // 由 apiClient 统一处理

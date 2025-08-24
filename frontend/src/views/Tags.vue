@@ -118,6 +118,17 @@
         <el-form-item label="标签名称">
           <el-input v-model="tagForm.name" placeholder="请输入标签名称" />
         </el-form-item>
+        <el-form-item label="选择分类">
+          <el-select v-model="tagForm.category_id" placeholder="请选择分类（可选）" clearable>
+            <el-option label="无分类" :value="null" />
+            <el-option 
+              v-for="category in categories" 
+              :key="category.id" 
+              :label="category.name" 
+              :value="category.id"
+            />
+          </el-select>
+        </el-form-item>
       </el-form>
       <template #footer>
         <span class="dialog-footer">
@@ -203,7 +214,8 @@ const dialogVisible = ref(false)
 const isEdit = ref(false)
 const tagForm = ref({
   id: null,
-  name: ''
+  name: '',
+  category_id: null
 })
 
 // 分类相关状态
@@ -259,13 +271,17 @@ const formatDate = (date) => {
 
 const showCreateDialog = () => {
   isEdit.value = false
-  tagForm.value = { id: null, name: '' }
+  tagForm.value = { id: null, name: '', category_id: null }
   dialogVisible.value = true
 }
 
 const showEditDialog = (tag) => {
   isEdit.value = true
-  tagForm.value = { ...tag }
+  tagForm.value = { 
+    id: tag.id, 
+    name: tag.name, 
+    category_id: tag.category?.id || null 
+  }
   dialogVisible.value = true
 }
 
@@ -279,12 +295,13 @@ const saveTag = async () => {
     if (isEdit.value) {
       await TagService.updateTag(tagForm.value.id, tagForm.value.name)
     } else {
-      await TagService.createTag(tagForm.value.name)
+      await TagService.createTag(tagForm.value.name, tagForm.value.category_id)
     }
     
     dialogVisible.value = false
     ElMessage.success(isEdit.value ? '更新成功' : '创建成功')
     loadTags() // 重新加载标签列表
+    loadCategories() // 重新加载分类列表以更新标签数量
   } catch (error) {
     ElMessage.error('操作失败：' + error.message)
   }

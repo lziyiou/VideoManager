@@ -1,0 +1,10 @@
+{
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "database": "${workspaceFolder:VideoManager}/backend/video_manager.db",
+            "name": "vm_db"
+        }
+    ]
+}
