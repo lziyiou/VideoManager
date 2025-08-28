@@ -72,7 +72,8 @@ const props = defineProps({
   },
   video: {
     type: Object,
-    required: true
+    required: false,
+    default: null
   }
 })
 
@@ -85,7 +86,7 @@ const dialogVisible = computed({
 
 const allTags = ref([])
 const groupedTags = ref({})
-const currentTags = computed(() => props.video.tags || [])
+const currentTags = computed(() => props.video?.tags || [])
 const availableTags = computed(() => {
   return allTags.value.filter(tag => 
     !currentTags.value.some(currentTag => currentTag.id === tag.id)
@@ -129,6 +130,8 @@ const loadTags = async () => {
 
 // 添加标签
 const addTag = async (tag) => {
+  if (!props.video) return
+  
   try {
     await TagService.addTagToVideo(props.video.id, tag.id)
     // 更新本地标签数组
@@ -142,6 +145,8 @@ const addTag = async (tag) => {
 
 // 移除标签
 const removeTag = async (tag) => {
+  if (!props.video) return
+  
   try {
     await TagService.removeTagFromVideo(props.video.id, tag.id)
     // 更新本地标签数组

@@ -14,7 +14,32 @@
 </template>
 
 <script setup>
-// 组件逻辑
+import { onMounted, provide, ref } from 'vue'
+import SettingService from './services/setting_service'
+
+// 全局设置状态
+const globalSettings = ref({
+  videosPerPage: 12 // 默认值
+})
+
+// 初始化全局设置
+const initializeGlobalSettings = async () => {
+  try {
+    const videosPerPage = await SettingService.getVideosPerPage()
+    globalSettings.value.videosPerPage = videosPerPage
+  } catch (error) {
+    console.error('获取全局设置失败:', error)
+    // 保持默认值
+  }
+}
+
+// 提供全局设置给子组件
+provide('globalSettings', globalSettings)
+
+// 应用启动时初始化设置
+onMounted(() => {
+  initializeGlobalSettings()
+})
 </script>
 
 <style>

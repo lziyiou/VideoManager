@@ -645,7 +645,12 @@ class VideoService:
         try:
             video = db.query(Video).filter(Video.id == video_id).first()
             if not video:
+                print(f"[VideoService] 视频不存在: ID={video_id}")
                 return False
+
+            # 记录更新前的状态
+            old_position = video.last_position
+            old_progress = video.watch_progress
 
             video.last_position = last_position
             video.last_watched_at = datetime.now()
@@ -663,11 +668,13 @@ class VideoService:
                 # 自动判断是否看完（观看进度超过95%）
                 video.is_completed = video.watch_progress >= 95.0
 
+            print(f"[VideoService] 更新播放进度: 视频ID={video_id}, 文件名='{video.filename}', 位置 {old_position}s -> {video.last_position}s, 进度 {old_progress:.1f}% -> {video.watch_progress:.1f}%, 已完成={video.is_completed}")
+
             db.commit()
             return True
         except Exception as e:
             db.rollback()
-            print(f"Error updating video progress: {str(e)}")
+            print(f"[VideoService] 更新播放进度失败 (视频ID: {video_id}): {str(e)}")
             return False
 
     @staticmethod
@@ -736,3 +743,27 @@ class VideoService:
             db.rollback()
             print(f"Error clearing video progress: {str(e)}")
             return False
+
+    @staticmethod
+    def clear_multiple_progress(db: Session, video_ids: List[int]) -> int:
+        """批量清除多个视频的播放进度"""
+        try:
+            print(f"[VideoService] 开始批量清除播放进度: 请求清除 {len(video_ids)} 个视频")
+            
+            # 批量更新，提高效率
+            updated_count = db.query(Video).filter(
+                Video.id.in_(video_ids)
+            ).update({
+                Video.last_position: 0.0,
+                Video.watch_progress: 0.0,
+                Video.is_completed: False,
+                Video.last_watched_at: None
+            }, synchronize_session=False)
+            
+            db.commit()
+            print(f"[VideoService] 批量清除播放进度成功: 实际清除 {updated_count} 个视频")
+            return updated_count
+        except Exception as e:
+            db.rollback()
+            print(f"[VideoService] 批量清除播放进度失败: {str(e)}")
+            return 0

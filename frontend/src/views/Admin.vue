@@ -73,7 +73,7 @@
 </template>
 
 <script>
-import axios from 'axios'
+import SettingService from '../services/setting_service.js'
 import { Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
@@ -128,13 +128,12 @@ export default {
   methods: {
     async loadSettings() {
       try {
-        const response = await axios.get('/api/settings/settings')
-        const rootDirSetting = response.data.find(setting => setting.key === 'root_directory')
-        const videosPerPageSetting = response.data.find(setting => setting.key === 'videos_per_page')
+        const rootDirectory = await SettingService.getRootDirectory()
+        const videosPerPage = await SettingService.getVideosPerPage()
         
         this.settings = { 
-          root_directory: rootDirSetting ? rootDirSetting.value : '',
-          videos_per_page: videosPerPageSetting ? parseInt(videosPerPageSetting.value) : 20
+          root_directory: rootDirectory || '',
+          videos_per_page: videosPerPage || 20
         }
         this.selectedDirectory = this.settings.root_directory || ''
         this.videosPerPage = this.settings.videos_per_page || 20
@@ -155,9 +154,7 @@ export default {
       }
 
       try {
-        await axios.post('/api/settings/root_directory', {
-          directory_path: this.selectedDirectory
-        })
+        await SettingService.setRootDirectory(this.selectedDirectory)
         this.showMessage('根目录设置已保存', 'success')
         this.unsavedChanges = false
         this.settings.root_directory = this.selectedDirectory
@@ -172,9 +169,7 @@ export default {
       }
 
       try {
-        await axios.post('/api/settings/videos_per_page', {
-          videos_per_page: this.videosPerPage
-        })
+        await SettingService.setVideosPerPage(this.videosPerPage)
         this.showMessage('每页视频数量设置已保存', 'success')
         this.unsavedChanges = false
         this.settings.videos_per_page = this.videosPerPage
@@ -196,13 +191,12 @@ export default {
         this.scanStatus = '正在扫描文件...'
 
         // 启动扫描
-        await axios.get('/api/videos/scan')
+        await SettingService.scanVideos()
 
         // 开始轮询进度
         this.scanInterval = setInterval(async () => {
           try {
-            const response = await axios.get('/api/videos/scan/progress')
-            const { progress, status, completed } = response.data
+            const { progress, status, completed } = await SettingService.getScanProgress()
 
             this.scanProgress = Math.round(progress * 100)
             this.scanStatus = status

@@ -20,9 +20,9 @@
 </template>
 
 <script setup>
-import { ref, watchEffect, onMounted, onBeforeUnmount } from 'vue'
+import { ref, watchEffect, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import axios from 'axios'
+import VideoService from '../services/video_service.js'
 import Plyr from 'plyr'
 import 'plyr/dist/plyr.css'
 
@@ -50,8 +50,8 @@ let player = null
 let isClosing = ref(false)  // 添加关闭状态标志
 let progressUpdateTimer = null  // 播放进度更新定时器
 let lastSavedPosition = 0  // 上次保存的播放位置
-const PROGRESS_UPDATE_INTERVAL = 5000  // 每5秒更新一次播放进度
-const MIN_PROGRESS_SAVE_THRESHOLD = 5  // 最小保存进度阈值（秒）
+const PROGRESS_UPDATE_INTERVAL = 10000  // 每10秒更新一次播放进度，减少服务器负载
+const MIN_PROGRESS_SAVE_THRESHOLD = 10  // 最小保存进度阈值（秒），与更新间隔保持一致
 
 // 播放进度相关API调用
 const updateVideoProgress = async (position, duration) => {
@@ -59,24 +59,43 @@ const updateVideoProgress = async (position, duration) => {
     const progress = duration > 0 ? (position / duration) * 100 : 0
     const isCompleted = progress >= 95 // 播放进度超过95%认为已完成
     
-    await axios.put(`/api/videos/${props.videoId}/progress`, {
+    console.log(`[VideoPlayer] 更新播放进度: 视频ID=${props.videoId}, 位置=${Math.floor(position)}s, 进度=${Math.round(progress * 100) / 100}%, 已完成=${isCompleted}`)
+    
+    await VideoService.updateProgress(props.videoId, {
       last_position: position,
       watch_progress: progress,
       is_completed: isCompleted
     })
     
     lastSavedPosition = position
+    console.log(`[VideoPlayer] 播放进度更新成功`)
   } catch (error) {
-    console.error('更新播放进度失败:', error)
+    console.error(`[VideoPlayer] 更新播放进度失败 (视频ID: ${props.videoId}):`, error)
   }
 }
 
 const getVideoProgress = async () => {
   try {
-    const response = await axios.get(`/api/videos/${props.videoId}/progress`)
-    return response.data
+    console.log(`[VideoPlayer] 开始获取播放进度: 视频ID=${props.videoId}`)
+    const progress = await VideoService.getProgress(props.videoId)
+    
+    console.log(`[VideoPlayer] API响应:`, progress)
+    
+    if (progress) {
+      if (progress.last_position > 0) {
+        console.log(`[VideoPlayer] 找到播放进度记录: 视频ID=${props.videoId}, 位置=${progress.last_position}s, 进度=${progress.watch_progress}%, 已完成=${progress.is_completed}`)
+      } else {
+        console.log(`[VideoPlayer] 播放进度为0: 视频ID=${props.videoId}, 数据=`, progress)
+      }
+    } else {
+      console.log(`[VideoPlayer] 无播放进度记录: 视频ID=${props.videoId}`)
+    }
+    return progress
   } catch (error) {
-    console.error('获取播放进度失败:', error)
+    console.error(`[VideoPlayer] 获取播放进度失败 (视频ID: ${props.videoId}):`, error)
+    if (error.response) {
+      console.error(`[VideoPlayer] 错误响应:`, error.response.status, error.response.data)
+    }
     return null
   }
 }
@@ -254,6 +273,9 @@ const initPlayer = () => {
     }
   })
 
+  // 存储播放进度恢复信息
+  let pendingProgressRestore = null
+  
   // 事件监听
   player.on('ready', async () => {
     loading.value = false
@@ -275,31 +297,12 @@ const initPlayer = () => {
       }
     }
     
-    // 获取并恢复播放进度
+    // 获取播放进度数据，但不立即设置
     const progressData = await getVideoProgress()
     if (progressData && progressData.last_position > MIN_PROGRESS_SAVE_THRESHOLD && !progressData.is_completed) {
-      // 显示断点续播提示
-      const resumeTime = Math.floor(progressData.last_position)
-      const minutes = Math.floor(resumeTime / 60)
-      const seconds = resumeTime % 60
-      const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`
-      
-      ElMessageBox.confirm(
-        `检测到上次播放进度：${timeStr}，是否从上次位置继续播放？`,
-        '断点续播',
-        {
-          confirmButtonText: '继续播放',
-          cancelButtonText: '从头播放',
-          type: 'info'
-        }
-      ).then(() => {
-        // 用户选择继续播放
-        player.currentTime = progressData.last_position
-        ElMessage.success('已跳转到上次播放位置')
-      }).catch(() => {
-        // 用户选择从头播放，清除播放进度
-        updateVideoProgress(0, player.duration || 0)
-      })
+      pendingProgressRestore = progressData.last_position
+      timeUpdateRestoreAttempted = false // 重置恢复尝试标志
+      console.log(`准备恢复播放进度到: ${Math.floor(pendingProgressRestore)}秒`)
     }
     
     // 检测是否为iOS设备
@@ -311,10 +314,8 @@ const initPlayer = () => {
       
       if (playPromise !== undefined) {
         playPromise.then(() => {
-          // 自动播放成功
           console.log('视频自动播放成功')
         }).catch(error => {
-          // 自动播放被阻止
           console.warn('视频自动播放被阻止:', error)
           
           if (isIOS) {
@@ -330,6 +331,62 @@ const initPlayer = () => {
       console.error('播放器初始化错误:', error)
     }
   })
+  
+  // 监听loadedmetadata事件，在视频元数据加载完成后设置播放位置
+  player.on('loadedmetadata', () => {
+    console.log(`[VideoPlayer] loadedmetadata事件触发, duration: ${player.duration}`)
+    restoreProgress()
+  })
+  
+  // 监听canplay事件，作为进度恢复的备用机制
+  player.on('canplay', () => {
+    console.log(`[VideoPlayer] canplay事件触发, duration: ${player.duration}`)
+    restoreProgress()
+  })
+  
+  // 监听durationchange事件，当视频时长信息可用时尝试恢复进度
+  player.on('durationchange', () => {
+    console.log(`[VideoPlayer] durationchange事件触发, duration: ${player.duration}`)
+    restoreProgress()
+  })
+  
+  // 监听timeupdate事件，在播放开始后尝试恢复进度（作为最后的备用机制）
+  let timeUpdateRestoreAttempted = false
+  player.on('timeupdate', () => {
+    if (!timeUpdateRestoreAttempted && pendingProgressRestore !== null) {
+      console.log(`[VideoPlayer] timeupdate事件触发, duration: ${player.duration}, currentTime: ${player.currentTime}`)
+      restoreProgress()
+      timeUpdateRestoreAttempted = true
+    }
+  })
+  
+  // 进度恢复函数
+  const restoreProgress = () => {
+    if (pendingProgressRestore !== null && player.duration > 0 && !isNaN(player.duration) && isFinite(player.duration)) {
+      // 确保恢复位置不超过视频总长度
+      const restorePosition = Math.min(pendingProgressRestore, player.duration - 5)
+      if (restorePosition > MIN_PROGRESS_SAVE_THRESHOLD) {
+        console.log(`[VideoPlayer] 尝试恢复播放进度到: ${Math.floor(restorePosition)}秒 (视频总长度: ${Math.floor(player.duration)}秒)`)
+        
+        // 使用 setTimeout 确保在下一个事件循环中设置时间
+        setTimeout(() => {
+          if (player && player.duration > 0) {
+            player.currentTime = restorePosition
+            console.log(`[VideoPlayer] 播放进度恢复成功: ${Math.floor(restorePosition)}秒`)
+          }
+        }, 100)
+        
+        pendingProgressRestore = null // 清除待恢复的进度
+        timeUpdateRestoreAttempted = true // 标记已尝试恢复
+      } else {
+        console.log(`[VideoPlayer] 跳过进度恢复: 位置${Math.floor(restorePosition)}秒小于阈值${MIN_PROGRESS_SAVE_THRESHOLD}秒`)
+        pendingProgressRestore = null
+        timeUpdateRestoreAttempted = true
+      }
+    } else if (pendingProgressRestore !== null) {
+      console.log(`[VideoPlayer] 进度恢复条件不满足: pendingProgressRestore=${pendingProgressRestore}, duration=${player.duration}, isNaN=${isNaN(player.duration)}, isFinite=${isFinite(player.duration)}`)
+    }
+  }
   
   // 添加播放进度跟踪事件监听
   player.on('play', () => {
@@ -414,7 +471,7 @@ const takeScreenshot = () => {
     const timestamp = new Date().getTime()
     formData.append('thumbnail', blob, `thumbnail_${timestamp}.jpg`)
 
-    axios.put(`/api/videos/${props.videoId}/thumbnail`, formData)
+    VideoService.uploadThumbnail(props.videoId, blob)
       .then(() => {
         ElMessage.success('视频封面上传成功')
         emit('thumbnail-updated', props.videoId)
@@ -436,7 +493,7 @@ async function uploadClipboardImage() {
         const timestamp = new Date().getTime();
         formData.append('thumbnail', blob, `clipboard_thumbnail_${timestamp}.jpg`);
 
-        await axios.put(`/api/videos/${props.videoId}/thumbnail`, formData);
+        await VideoService.uploadThumbnail(props.videoId, blob);
         ElMessage.success('粘贴板图片上传成功');
         emit('thumbnail-updated', props.videoId);
         return;
@@ -633,11 +690,13 @@ onBeforeUnmount(() => {
 }
 
 .video-player-container :deep(.el-dialog__title) {
-  max-width: 400px;
+  max-width: calc(100% - 100px);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   display: inline-block;
+  font-size: 16px;
+  font-weight: 500;
 }
 
 .video-player-container :deep(.el-dialog__body) {

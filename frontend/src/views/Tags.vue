@@ -327,13 +327,48 @@ const deleteTag = (tag) => {
   })
 }
 
+// 生成随机颜色（排除已使用的颜色）
+const generateRandomColor = () => {
+  const allColors = [
+    '#409EFF', // 蓝色
+    '#67C23A', // 绿色
+    '#E6A23C', // 橙色
+    '#F56C6C', // 红色
+    '#909399', // 灰色
+    '#9C27B0', // 紫色
+    '#FF9800', // 深橙色
+    '#4CAF50', // 深绿色
+    '#2196F3', // 深蓝色
+    '#FF5722', // 深红色
+    '#795548', // 棕色
+    '#607D8B', // 蓝灰色
+    '#E91E63', // 粉红色
+    '#00BCD4', // 青色
+    '#8BC34A', // 浅绿色
+    '#FFC107', // 琥珀色
+    '#FF6F00', // 深橙色
+    '#6A1B9A'  // 深紫色
+  ]
+  
+  // 获取已使用的颜色
+  const usedColors = categories.value.map(category => category.color).filter(color => color)
+  
+  // 过滤出未使用的颜色
+  const availableColors = allColors.filter(color => !usedColors.includes(color))
+  
+  // 如果所有颜色都被使用了，就从全部颜色中随机选择
+  const colorsToChooseFrom = availableColors.length > 0 ? availableColors : allColors
+  
+  return colorsToChooseFrom[Math.floor(Math.random() * colorsToChooseFrom.length)]
+}
+
 // 分类管理方法
 const showCreateCategoryDialog = () => {
   isCategoryEdit.value = false
   categoryForm.value = {
     id: null,
     name: '',
-    color: '#409EFF',
+    color: generateRandomColor(),
     sort_order: 0,
     description: ''
   }

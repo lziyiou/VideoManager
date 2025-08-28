@@ -1,283 +1,109 @@
 <template>
   <div class="video-list">
-    <div class="video-list-header">
-      <div class="top-controls">
-        <div class="left-section">
-          <el-input
-            v-model="searchKeyword"
-            placeholder="搜索视频文件"
-            class="search-input"
-            @input="handleSearch"
-            clearable
-          >
-            <template #prefix>
-              <el-icon><Search /></el-icon>
-            </template>
-          </el-input>
-          
-          <el-switch
-            v-model="onlyFavorites"
-            class="favorite-filter"
-            @change="handleSearch"
-            active-text="只看收藏"
-            inactive-text=""
-          >
-          </el-switch>
-          
-          <el-select
-            v-model="durationFilter"
-            placeholder="视频时长"
-            clearable
-            @change="handleSearch"
-            class="duration-filter"
-          >
-            <el-option
-              v-for="option in durationOptions"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            />
-          </el-select>
-
-          <el-select
-            v-model="sortFilter"
-            placeholder="排序方式"
-            clearable
-            @change="handleSortChange"
-            class="sort-filter"
-          >
-            <el-option
-              v-for="option in sortOptions"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            />
-          </el-select>
-          
-          <el-button 
-            v-if="sortFilter === 'random'"
-            @click="refreshRandom"
-            :icon="Refresh"
-            size="small"
-            type="primary"
-            plain
-            class="refresh-random-btn"
-          >
-            重新随机
-          </el-button>
-        </div>
-        <div class="right-section">
-          <el-radio-group v-model="viewMode" size="large">
-            <el-radio-button label="list">
-              <el-icon><List /></el-icon>
-            </el-radio-button>
-            <el-radio-button label="grid">
-              <el-icon><Grid /></el-icon>
-            </el-radio-button>
-          </el-radio-group>
-        </div>
-      </div>
-      
-      <!-- 标签过滤组件 -->
-      <div class="tag-filter-container">
-        <TagList
-          :all-tags="allTags"
-          v-model:selected-tag-ids="selectedTagIds"
-          @update:selected-tag-ids="handleSearch"
-        />
-      </div>
-    </div>
 
     <div v-loading="loading">
       <!-- 列表视图 -->
-      <el-table
-        v-if="viewMode === 'list'"
-        :data="videos"
-        style="width: 100%"
-      >
-        <el-table-column prop="filename" label="文件名" min-width="200" />
-        <el-table-column prop="size" label="大小" width="120">
-          <template #default="{ row }">
-            {{ formatFileSize(row.size) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="duration" label="时长" width="120">
-          <template #default="{ row }">
-            {{ formatDuration(row.duration) }}
-          </template>
-        </el-table-column>
-        <el-table-column label="标签" min-width="100">
-          <template #default="{ row }">
-            <div class="video-tags">
-              <el-tag 
-                v-for="tag in row.tags" 
-                :key="tag.id" 
-                size="small" 
-                class="video-tag"
-                closable
-                @close="removeTagFromVideo(row.id, tag.id)"
-              >
-                {{ tag.name }}
-              </el-tag>
-              <el-button 
-                type="primary" 
-                size="small" 
-                circle 
-                plain 
-                @click="handleShowTagsDialog(row)"
-              >
-                <el-icon><Plus /></el-icon>
-              </el-button>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="350" fixed="right">
-          <template #default="{ row }">
-            <div class="operation-buttons">
-              <el-button link type="primary" @click="handlePlay(row)">
-                <el-icon><VideoPlay /></el-icon>
-                播放
-              </el-button>
-              <el-button link type="primary" @click="handleEdit(row)">
-                <el-icon :size="16"><Edit style="color: #409EFF; transform: scale(1.1);" /></el-icon>
-                编辑
-              </el-button>
-              <el-button 
-                link 
-                :type="row.is_favorite ? 'danger' : 'primary'" 
-                @click="updateVideoStatus(row, 'favorite', !row.is_favorite)"
-              >
-                <el-icon :size="16">
-                  <StarFilled v-if="row.is_favorite" style="color: #F56C6C; transform: scale(1.1); border-radius: 50%;" />
-                  <Star v-else style="color: #409EFF; transform: scale(1.1); border-radius: 50%;" />
-                </el-icon>
-                {{ row.is_favorite ? '取消收藏' : '收藏' }}
-              </el-button>
-              <el-button 
-                link 
-                :type="!row.web_playable ? 'danger' : 'primary'" 
-                :style="!row.web_playable ? 'font-weight: bold; text-decoration: underline;' : ''"
-                @click="updateVideoStatus(row, 'webPlayable', !row.web_playable)"
-              >
-                <el-icon :size="16">
-                  <WarningFilled v-if="!row.web_playable" style="color: #F56C6C; transform: scale(1.1);" />
-                  <Warning v-else style="color: #409EFF; transform: scale(1.1);" />
-                </el-icon>
-                {{ row.web_playable ? '标记无法播放' : '标记可以播放' }}
-              </el-button>
-              <el-button link type="danger" @click="handleDelete(row)">
-                <el-icon :size="16"><Delete style="color: #F56C6C; transform: scale(1.1);" /></el-icon>
-                删除
-              </el-button>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
+      <div v-if="isListView" class="video-list-view">
+        <el-table :data="videos" style="width: 100%" stripe>
+          <el-table-column label="缩略图" width="120" align="center">
+            <template #default="{ row }">
+              <div class="thumbnail-container">
+                <img 
+                  :src="`/api/videos/${row.id}/thumbnail?t=${row.updated_at || Date.now()}`"
+                  @error="handleThumbnailError"
+                  alt="视频缩略图"
+                  class="list-thumbnail"
+                  @click="playVideo(row)"
+                />
+                <div v-if="row.watch_progress > 0 && !row.is_completed" class="progress-overlay">
+                  <div class="progress-bar">
+                    <div 
+                      class="progress-fill" 
+                      :style="{ width: row.watch_progress + '%' }"
+                    ></div>
+                  </div>
+                </div>
+                <div v-if="row.is_completed" class="completed-overlay">
+                  <el-icon class="completed-icon"><Check /></el-icon>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+          
+          <el-table-column prop="filename" label="文件名" min-width="250" show-overflow-tooltip>
+            <template #default="{ row }">
+              <div class="filename-cell">
+                <div class="filename-text" @click="playVideo(row)">{{ row.filename }}</div>
+                <div class="file-meta">
+                  <span class="file-size">{{ formatFileSize(row.size) }}</span>
+                  <span class="file-duration">{{ formatDuration(row.duration) }}</span>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+          
+          <el-table-column label="标签" width="200">
+            <template #default="{ row }">
+              <div class="video-tags">
+                <el-tag 
+                  v-for="tag in row.tags.slice(0, 2)" 
+                  :key="tag.id" 
+                  size="small" 
+                  class="video-tag"
+                  closable
+                  @close="removeVideoTag(row.id, tag.id)"
+                >
+                  {{ tag.name }}
+                </el-tag>
+                <el-tag v-if="row.tags.length > 2" size="small" type="info">
+                  +{{ row.tags.length - 2 }}
+                </el-tag>
+                <el-button 
+                  type="primary" 
+                  size="small" 
+                  circle 
+                  plain 
+                  @click="showTagDialog(row)"
+                >
+                  <el-icon><Plus /></el-icon>
+                </el-button>
+              </div>
+            </template>
+          </el-table-column>
+          
+          <el-table-column label="操作" width="200" align="center">
+            <template #default="{ row }">
+              <div class="operation-buttons">
+                <el-button link type="primary" @click="playVideo(row)">
+                  <el-icon><VideoPlay /></el-icon>
+                  播放
+                </el-button>
+                <VideoActions 
+                  :video="row" 
+                  :show-labels="false"
+                  @edit="editVideo"
+                  @update-status="handleUpdateStatus"
+                  @delete="deleteVideo"
+                />
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
 
       <!-- 网格视图 -->
-      <div v-else class="video-grid">
-        <el-card
+      <div v-if="isGridView" class="video-grid">
+        <VideoCard
           v-for="video in videos"
           :key="video.id"
-          class="video-card"
-          shadow="hover"
-          @click="handlePlay(video)"
-        >
-          <div class="video-thumbnail">
-            <img 
-              :src="`/api/videos/${video.id}/thumbnail?t=${video.updated_at || Date.now()}`"
-              @load="handleThumbnailLoad(video, $event)"
-              @error="handleThumbnailError(video, $event)"
-              alt="视频缩略图"
-              class="thumbnail-image"
-            />
-            <el-icon class="play-icon"><VideoPlay /></el-icon>
-            <!-- 播放进度条 -->
-            <div v-if="video.watch_progress > 0 && !video.is_completed" class="progress-overlay">
-              <div class="progress-bar">
-                <div 
-                  class="progress-fill" 
-                  :style="{ width: video.watch_progress + '%' }"
-                ></div>
-              </div>
-              <div class="progress-text">{{ Math.round(video.watch_progress) }}%</div>
-            </div>
-            <!-- 已完成标记 -->
-            <div v-if="video.is_completed" class="completed-overlay">
-              <el-icon class="completed-icon"><Check /></el-icon>
-            </div>
-          </div>
-          <div class="video-info">
-            <div class="video-title" :title="video.filename">{{ video.filename }}</div>
-            <div class="video-meta">
-              <span>{{ formatFileSize(video.size) }}</span>
-              <span>{{ formatDuration(video.duration) }}</span>
-              <div class="video-actions">
-                <el-button link type="primary" @click.stop="handleEdit(video)">
-                <el-icon :size="16"><Edit style="color: #409EFF; transform: scale(1.1);" /></el-icon>
-              </el-button>
-                <el-button 
-                  link 
-                  :type="video.is_favorite ? 'danger' : 'primary'" 
-                  @click.stop="updateVideoStatus(video, 'favorite', !video.is_favorite)"
-                >
-                  <el-icon :size="16">
-                <StarFilled v-if="video.is_favorite" style="color: rgb(255, 183, 0); transform: scale(1.1); border-radius: 50%;" />
-                <Star v-else style="color: #409EFF; transform: scale(1.1); border-radius: 50%;" />
-              </el-icon>
-                </el-button>
-                <el-button 
-                  link 
-                  :type="!video.web_playable ? 'danger' : 'primary'" 
-                  :style="!video.web_playable ? 'font-weight: bold; text-decoration: underline;' : ''"
-                  @click.stop="updateVideoStatus(video, 'webPlayable', !video.web_playable)"
-                >
-                  <el-icon :size="16">
-                <WarningFilled v-if="!video.web_playable" style="color: #F56C6C; transform: scale(1.1);" />
-                <Warning v-else style="color: #409EFF; transform: scale(1.1);" />
-              </el-icon>
-                </el-button>
-                <el-button link type="danger" @click.stop="handleDelete(video)">
-                <el-icon :size="16"><Delete style="color: #F56C6C; transform: scale(1.1);" /></el-icon>
-              </el-button>
-              </div>
-            </div>
-            <div class="video-tags" v-if="video.tags && video.tags.length > 0">
-              <el-tag 
-                v-for="tag in video.tags" 
-                :key="tag.id" 
-                size="small" 
-                class="video-tag"
-                @click.stop
-                closable
-                @close.stop="removeTagFromVideo(video.id, tag.id)"
-              >
-                {{ tag.name }}
-              </el-tag>
-              <el-button 
-                type="primary" 
-                size="small" 
-                circle 
-                plain 
-                class="add-tag-btn"
-                @click.stop="handleShowTagsDialog(video)"
-              >
-                <el-icon><Plus /></el-icon>
-              </el-button>
-            </div>
-            <div class="video-tags" v-else>
-              <el-button 
-                type="primary" 
-                size="small" 
-                plain 
-                class="add-tag-btn empty-tags"
-                @click.stop="handleShowTagsDialog(video)"
-              >
-                <el-icon><Plus /></el-icon> 添加标签
-              </el-button>
-            </div>
-          </div>
-        </el-card>
+          :video="video"
+          @play="playVideo"
+          @edit="editVideo"
+          @update-status="handleUpdateStatus"
+          @delete="deleteVideo"
+          @show-tags-dialog="showTagDialog"
+          @remove-tag="removeVideoTag"
+        />
       </div>
     </div>
 
@@ -293,316 +119,179 @@
       />
     </div>
   </div>
-
-  <!-- 视频播放器 -->
-  <VideoPlayer
-    v-model:visible="showPlayer"
-    :video-id="currentVideo?.id"
-    :title="currentVideo?.filename"
-    @thumbnail-updated="updateThumbnail"
-  />
-
-  <!-- 标签管理对话框 -->
-  <TagsDialog
-    v-model="showTagsDialog"
-    :video="selectedVideo"
-    @tags-updated="handleTagsUpdated"
-  />
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
-import { Search, Refresh, VideoPlay, List, Grid, Plus, Edit, Star, StarFilled, Warning, WarningFilled, Delete, Check } from '@element-plus/icons-vue'
+import { ref, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-// import axios from 'axios'; // Replaced by apiClient
-import apiClient from '../services/api_client';
-import { useRoute, useRouter } from 'vue-router'
-import VideoPlayer from './VideoPlayer.vue'
-import TagsDialog from './TagsDialog.vue'
-import TagList from './TagList.vue'
-import TagService from '../services/tag_service'
-import VideoService from '../services/video_service'
+import { VideoPlay, Plus, Check } from '@element-plus/icons-vue'
+import { useVideoList } from '../composables/useVideoList.js'
+import TagService from '../services/tag_service.js'
+import VideoCard from './VideoCard.vue'
+import VideoActions from './VideoActions.vue'
 
-const route = useRoute()
-const router = useRouter()
+// 定义props
+const props = defineProps({
+  searchKeyword: {
+    type: String,
+    default: ''
+  },
+  onlyFavorites: {
+    type: Boolean,
+    default: false
+  },
+  selectedTagIds: {
+    type: Array,
+    default: () => []
+  },
+  durationFilter: {
+    type: String,
+    default: ''
+  },
+  sortFilter: {
+    type: String,
+    default: 'random'
+  },
+  viewMode: {
+    type: String,
+    default: 'grid'
+  }
+})
 
-const videos = ref([])
-const loading = ref(false)
-const searchKeyword = ref(route.query.keyword || '')
-const currentPage = ref(parseInt(route.query.page) || 1)
-const pageSize = ref(parseInt(route.query.size) || 20) // 如果URL中没有size参数，使用默认值20（仅用于前端分页显示）
-const total = ref(0)
-const viewMode = ref(localStorage.getItem('viewMode') || 'grid') // 'list' 或 'grid'
+// 使用自定义 Hook
+const {
+  videos,
+  loading,
+  searchKeyword,
+  onlyFavorites,
+  selectedTagIds,
+  allTags,
+  durationFilter,
+  sortFilter,
+  viewMode,
+  currentPage,
+  pageSize,
+  total,
+  totalPages,
+  hasVideos,
+  isGridView,
+  isListView,
+  initializeFromRoute,
+  loadVideos,
+  loadTags,
+  handleSearch,
+  handleSortChange,
+  refreshRandom,
+  handleSizeChange,
+  handleCurrentChange,
+  handleViewModeChange,
+  updateVideoProgress,
+  deleteVideo: deleteVideoFromList,
+  updateVideo,
+  renameVideo
+} = useVideoList(props)
 
-// 过滤相关
-const onlyFavorites = ref(route.query.favorite === 'true')
-const selectedTagIds = ref(route.query.tags ? route.query.tags.split(',').map(Number) : [])
-const allTags = ref([])
-const durationFilter = ref(route.query.duration || '')
-const durationOptions = [
-  { label: '全部', value: '' },
-  { label: '短视频', value: 'short' },
-  { label: '长视频', value: 'long' }
-]
-const sortFilter = ref(route.query.sort_by || 'random')
-// 如果是随机排序但没有种子，则生成一个初始种子
-const randomSeed = ref(
-  route.query.seed ? parseInt(route.query.seed) : 
-  (route.query.sort_by === 'random' || (!route.query.sort_by)) ? Date.now() : null
-)
-const sortOptions = [
-  { label: '文件名', value: 'filename' },
-  { label: '时长', value: 'duration' },
-  { label: '添加时间', value: 'created_at' },
-  { label: '随机', value: 'random' },
-]
+// 定义事件
+const emit = defineEmits(['video-updated', 'play-video', 'show-tags-dialog'])
 
-// 更新视频标记状态
-const updateVideoStatus = async (video, type, value) => {
-  try {
-    if (type === 'favorite') {
-      await VideoService.updateFavorite(video.id, value)
-      video.is_favorite = value ? 1 : 0
-    } else if (type === 'webPlayable') {
-      await VideoService.updateWebPlayable(video.id, value)
-      video.web_playable = value ? 1 : 0
-    }
-    ElMessage.success('更新成功')
-  } catch (error) {
-    ElMessage.error('更新失败')
-    console.error('更新视频状态失败:', error)
+// 播放视频
+const playVideo = (video) => {
+  emit('play-video', video)
+}
+
+// 文件名验证器
+const validateFilename = (value) => {
+  if (!value) return '文件名不能为空'
+  if (value.length > 255) return '文件名不能超过255个字符'
+  return true
+}
+
+// 处理重命名错误
+const handleRenameError = (error) => {
+  console.error('重命名失败:', error)
+  if (error.response?.data?.detail) {
+    ElMessage({
+      message: error.response.data.detail,
+      type: 'error',
+      duration: 5000,
+      showClose: true
+    })
+  } else {
+    ElMessage.error('重命名失败，请稍后再试。')
   }
 }
 
-// 视频播放相关
-const showPlayer = ref(false)
-const currentVideo = ref(null)
-
-// 标签管理相关
-const showTagsDialog = ref(false)
-const selectedVideo = ref(null)
-
-// 更新视频缩略图 (现在由后端管理时间戳, 前端只需刷新列表)
-const updateThumbnail = (videoId) => {
-  // 找到需要更新的视频
-  const videoIndex = videos.value.findIndex(video => video.id === videoId)
-  if (videoIndex !== -1) {
-    // 更新视频的时间戳
-    videos.value[videoIndex].updated_at = Date.now()
-  }
-}
-
-// 处理缩略图加载成功
-const handleThumbnailLoad = (video, event) => {
-  // 缩略图加载成功，无需额外处理
-  // 后端已经更新了updated_at字段，下次刷新时会使用新的时间戳
-}
-
-// 处理缩略图加载失败
-const handleThumbnailError = (video, event) => {
-  console.log(`视频 ${video.id} 的缩略图加载失败，尝试重新加载`)
-  // 延迟2秒后重新尝试加载缩略图
-  setTimeout(() => {
-    const videoIndex = videos.value.findIndex(v => v.id === video.id)
-    if (videoIndex !== -1) {
-      // 更新时间戳以强制重新加载
-      videos.value[videoIndex].updated_at = Date.now()
-    }
-  }, 2000)
-}
-
-// 修改文件名
-const handleEdit = async (video) => {
+// 编辑视频
+const editVideo = async (video) => {
   try {
     const ext = video.filename.split('.').pop()
-    const oldName = video.filename.replace('.'+ext, '')
+    const oldName = video.filename.replace('.' + ext, '')
+    
     const { value: newFilename } = await ElMessageBox.prompt('请输入新的文件名', '重命名', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       inputValue: oldName,
-      inputValidator: (value) => {
-        if (!value) {
-          return '文件名不能为空'
-        }
-        if (value.length > 255) {
-          return '文件名不能超过255个字符'
-        }
-        return true
-      },
+      inputValidator: validateFilename,
       inputErrorMessage: '文件名格式不正确'
     })
 
     const newName = newFilename.trim() + '.' + ext
+    if (newName === video.filename) return
 
-    if (newName !== video.filename) {
-      try {
-        const response = await VideoService.rename(video.id, newName)
-        
-        if (response.status == 200) {  // 假设后端返回 { success: true } 结构
-          video.filename = newName;  // 后端确认成功，才更新前端
-          ElMessage.success('重命名成功！');
-        }
-      } catch (error) {
-        console.error('重命名失败:', error);
-        if (error.response?.data?.detail) {
-          // 显示后端返回的详细错误信息
-          ElMessage({
-            message: error.response.data.detail,
-            type: 'error',
-            duration: 5000,  // 延长显示时间到5秒
-            showClose: true  // 显示关闭按钮
-          });
-        } else {
-          ElMessage.error('重命名失败，请稍后再试。');
-        }
-      }
-    }
+    const result = await renameVideo(video.id, newName)
+     if (result.success) {
+       ElMessage.success('重命名成功！')
+     } else {
+       handleRenameError(result.error)
+     }
   } catch (error) {
-    if (error.message !== 'cancel') {
-      console.error('重命名失败:', error)
+    if (error !== 'cancel') {
+      console.error('重命名操作失败:', error)
     }
   }
 }
 
-// 监听 viewMode 变化并保存到 localStorage
-watch(viewMode, (newValue) => {
-  localStorage.setItem('viewMode', newValue)
-})
-
-// 更新路由参数
-const updateRouteQuery = () => {
-  router.push({
-    query: {
-      ...route.query,
-      keyword: searchKeyword.value || undefined,
-      page: currentPage.value,
-      size: pageSize.value,
-      favorite: onlyFavorites.value ? 'true' : undefined,
-      tags: selectedTagIds.value.length > 0 ? selectedTagIds.value.join(',') : undefined,
-      duration: durationFilter.value || undefined,
-      sort_by: sortFilter.value || 'random',
-      seed: randomSeed.value || undefined
+// 处理视频状态更新
+const handleUpdateStatus = async (video, field, value) => {
+  const statusConfig = {
+    favorite: {
+      key: 'is_favorite',
+      message: value => value ? '已收藏' : '已取消收藏'
+    },
+    webPlayable: {
+      key: 'web_playable', 
+      message: value => value ? '已标记为可播放' : '已标记为不可播放'
     }
-  })
-}
-
-// 处理排序变化
-const handleSortChange = () => {
-  if (sortFilter.value === 'random') {
-    // 当选择随机排序时，生成新的随机种子
-    randomSeed.value = Date.now()
-  } else {
-    // 非随机排序时清除种子
-    randomSeed.value = null
   }
-  handleSearch()
-}
 
-// 重新随机
-const refreshRandom = () => {
-  if (sortFilter.value === 'random') {
-    randomSeed.value = Date.now()
-    handleSearch()
+  const config = statusConfig[field]
+  if (!config) {
+    ElMessage.error('未知的状态字段')
+    return
   }
-}
 
-// 加载视频列表
-const loadVideos = async () => {
   try {
-    loading.value = true
-    const skip = (currentPage.value - 1) * pageSize.value
-    
-    // 构建查询参数
-    const params = {
-      skip
-      // 不传递limit参数，让后端使用数据库中的默认值
-    }
-    
-    // 添加收藏过滤参数
-    if (onlyFavorites.value) {
-      params.favorite = true
-    }
-    
-    // 添加标签过滤参数
-    if (selectedTagIds.value.length > 0) {
-      params.tags = selectedTagIds.value.join(',')
-    }
-    
-    // 添加时长过滤参数
-    if (durationFilter.value) {
-      params.duration = durationFilter.value
-    }
-
-    // 添加排序参数
-    if (sortFilter.value) {
-      params.sort_by = sortFilter.value
-      // 如果是随机排序，使用固定的随机种子
-      if (sortFilter.value === 'random' && randomSeed.value) {
-        params.seed = randomSeed.value
-      }
-    }
-    
-    let response
-    if (searchKeyword.value) {
-      // 搜索模式
-      params.keyword = searchKeyword.value
-      response = await VideoService.getVideos(params)
-    } else {
-      // 列表模式
-      response = await VideoService.getVideos(params)
-    }
-    
-    videos.value = response.items // 使用返回的视频列表数据
-    total.value = response.total // 使用返回的总记录数
+    const updateData = { [config.key]: value }
+    updateVideo(video.id, updateData)
+    ElMessage.success(config.message(value))
   } catch (error) {
-    ElMessage.error('加载视频列表失败')
-    console.error('加载视频列表失败:', error)
-  } finally {
-    loading.value = false
+    console.error('更新视频状态失败:', error)
+    ElMessage.error('更新失败')
   }
 }
 
-// 搜索处理
-const handleSearch = async () => {
-  currentPage.value = 1
-  updateRouteQuery()
+// 删除视频
+const deleteVideo = async (videoId) => {
+  await deleteVideoFromList(videoId)
 }
 
-// 分页处理
-const handleSizeChange = async (val) => {
-  pageSize.value = val
-  updateRouteQuery()
+// 显示标签对话框
+const showTagDialog = (video) => {
+  emit('show-tags-dialog', video)
 }
 
-const handleCurrentChange = (val) => {
-  currentPage.value = val
-  updateRouteQuery()
-}
-
-// 播放视频
-const handlePlay = (video) => {
-  currentVideo.value = video
-  showPlayer.value = true
-}
-
-// 显示标签管理对话框
-const handleShowTagsDialog = (video) => {
-  selectedVideo.value = video
-  showTagsDialog.value = true
-}
-
-// 标签更新后重新加载视频列表
-const handleTagsUpdated = (updatedTags) => {
-  if (selectedVideo.value) {
-    const videoIndex = videos.value.findIndex(video => video.id === selectedVideo.value.id)
-    if (videoIndex !== -1) {
-      videos.value[videoIndex].tags = updatedTags
-    }
-  }
-}
-
-// 移除视频标签
-const removeTagFromVideo = async (videoId, tagId) => {
+// 从视频中移除标签
+const removeVideoTag = async (videoId, tagId) => {
   try {
     await TagService.removeTagFromVideo(videoId, tagId)
     // 在本地更新视频的标签列表
@@ -616,338 +305,188 @@ const removeTagFromVideo = async (videoId, tagId) => {
   }
 }
 
+// 处理缩略图加载错误
+const handleThumbnailError = (event) => {
+  event.target.src = '/default-thumbnail.png'
+}
+
 // 格式化文件大小
-const formatFileSize = (size) => {
-  if (size >= 1024) {
-    return `${(size / 1024).toFixed(2)} GB`
-  }
-  return `${size.toFixed(2)} MB`
+const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
 }
 
-// 删除视频
-const handleDelete = async (video) => {
-  try {
-    await ElMessageBox.confirm(
-      `确定要删除视频 "${video.filename}" 吗？此操作不可撤销。`,
-      '确认删除',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning',
-      }
-    )
-    await VideoService.delete(video.id)
-    ElMessage.success('视频删除成功')
-    // 从列表中移除视频
-    videos.value = videos.value.filter(v => v.id !== video.id)
-    // 如果当前页没有数据了，且不是第一页，则返回上一页
-    if (videos.value.length === 0 && currentPage.value > 1) {
-      currentPage.value -= 1
-    }
-    loadVideos() // 重新加载数据，确保分页正确
-  } catch (error) {
-    if (error !== 'cancel') {
-      ElMessage.error('删除视频失败')
-      console.error('删除视频失败:', error)
-    }
+// 格式化时长
+const formatDuration = (seconds) => {
+  if (!seconds) return '00:00'
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const secs = Math.floor(seconds % 60)
+  
+  if (hours > 0) {
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
+  return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
 }
 
-// 格式化视频时长
-const formatDuration = (duration) => {
-  const hours = Math.floor(duration / 3600)
-  const minutes = Math.floor((duration % 3600) / 60)
-  const seconds = Math.floor(duration % 60)
-  // 如果小时数为0，则只显示分钟和秒
-  if (hours === 0) {
-    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-  }
-  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-}
+// 监听 viewMode 变化并保存到 localStorage
+watch(viewMode, (newValue) => {
+  localStorage.setItem('viewMode', newValue)
+})
 
-// 监听路由参数变化
-watch(
-  () => route.query,
-  async () => {
-    const { keyword, page, size, favorite, tags, sort_by, duration, seed } = route.query
-    searchKeyword.value = keyword || ''
-    currentPage.value = parseInt(page) || 1
-    
-    // 如果URL中指定了size参数则使用，否则使用默认值20
-    pageSize.value = size ? parseInt(size) : 20
-    
-    onlyFavorites.value = favorite === 'true'
-    selectedTagIds.value = tags ? tags.split(',').map(Number) : []
-    sortFilter.value = sort_by || 'random'
-    durationFilter.value = duration || ''
-    randomSeed.value = seed ? parseInt(seed) : null
-    loadVideos()
-  }
-)
-
-// 加载所有标签
-const loadAllTags = async () => {
-  try {
-    const response = await TagService.getAllTags()
-    allTags.value = response
-  } catch (error) {
-    console.error('加载标签失败:', error)
-  }
-}
-
-// 不再需要loadSettings函数，因为后端会自动使用数据库中的默认值
-
+// 组件挂载时初始化数据
 onMounted(async () => {
-  loadAllTags()
-  // 如果是随机排序且生成了新的种子，更新URL
-  if (sortFilter.value === 'random' && randomSeed.value && !route.query.seed) {
-    updateRouteQuery()
-  } else {
-    loadVideos()
+  // 如果没有props，则从路由初始化
+  if (!props || Object.keys(props).length === 0) {
+    initializeFromRoute()
   }
+  await loadVideos()
 })
 
 // 暴露方法给父组件
 defineExpose({
-  loadVideos
+  loadVideos,
+  updateVideoProgress,
+  handleSearch,
+  handleSortChange,
+  refreshRandom
 })
 </script>
 
 <style scoped>
-.operation-buttons {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-}
-
-.video-actions {
-  margin-left: auto;
-}
-
 .video-list {
-  padding: 12px;
+  padding: 20px;
 }
 
-.refresh-random-btn {
-  margin-left: 8px;
-  font-size: 12px;
-}
-
-.video-list-header {
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 16px;
-}
-
-.top-controls {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.left-section {
-  display: flex;
-  gap: 12px;
-}
-
-.search-input {
-  width: 300px;
-}
-
-.tag-filter-container {
-  width: 100%;
-}
-
-.favorite-filter {
-  margin-left: 12px;
-}
-
-.pagination-container {
-  margin-top: 16px;
-  display: flex;
-  justify-content: center;
-}
-
+/* 网格视图样式 */
 .video-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 20px;
-  padding: 20px 0;
+  margin-bottom: 20px;
 }
 
-.video-card {
-  cursor: pointer;
-  transition: transform 0.2s;
-  width: 100%;
-  min-width: 240px;
+/* 列表视图样式 */
+.video-list-view {
+  margin-bottom: 20px;
 }
 
-.video-card:hover {
-  transform: translateY(-3px);
-}
-
-.video-thumbnail {
-  aspect-ratio: 16/9;
-  background-color: #f5f7fa;
+/* 分页样式 */
+.pagination-container {
   display: flex;
-  align-items: center;
   justify-content: center;
-  margin-bottom: 8px;
+  margin-top: 20px;
+}
+
+/* 列表视图缩略图样式 */
+.thumbnail-container {
   position: relative;
+  width: 80px;
+  height: 60px;
   border-radius: 4px;
   overflow: hidden;
+  cursor: pointer;
 }
 
-.video-thumbnail::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.1);
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.video-card:hover .video-thumbnail::before {
-  opacity: 1;
-}
-
-.play-icon {
-  font-size: 48px;
-  color: #fff;
-  opacity: 0;
-  transition: opacity 0.2s;
-  position: relative;
-  z-index: 1;
-}
-
-.video-card:hover .play-icon {
-  opacity: 1;
-  color: #909399;
-  opacity: 0.7;
-}
-
-.thumbnail-image {
+.list-thumbnail {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  position: absolute;
-  top: 0;
-  left: 0;
+  transition: transform 0.2s;
 }
 
-.video-info {
-  padding: 0 2px 2px;
+.list-thumbnail:hover {
+  transform: scale(1.05);
 }
 
-.video-title {
-  font-size: 13px;
-  margin-bottom: 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.video-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--el-text-color-secondary);
-  font-size: 0.9em;
-  margin-bottom: 8px;
-}
-
-.video-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
-}
-
-.video-tag {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.add-tag-btn {
-  padding: 2px;
-  height: 22px;
-  width: 22px;
-}
-
-.add-tag-btn.empty-tags {
-  width: auto;
-  height: auto;
-  font-size: 12px;
-}
-
-.duration-filter {
-  width: 180px;
-  margin-left: 12px;
-}
-
-.sort-filter {
-  width: 130px;
-  margin-left: 12px;
-}
-
-/* 播放进度条样式 */
 .progress-overlay {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
-  padding: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  height: 4px;
+  background: rgba(0, 0, 0, 0.3);
 }
 
 .progress-bar {
-  flex: 1;
-  height: 4px;
-  background-color: rgba(255, 255, 255, 0.3);
-  border-radius: 2px;
-  overflow: hidden;
-  margin-right: 8px;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .progress-fill {
   height: 100%;
-  background-color: #409EFF;
-  border-radius: 2px;
-  transition: width 0.3s ease;
+  background: #409eff;
+  transition: width 0.3s;
 }
 
-.progress-text {
-  color: white;
-  font-size: 12px;
-  font-weight: 500;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
-
-/* 已完成标记样式 */
 .completed-overlay {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  background-color: rgba(67, 160, 71, 0.9);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.7);
   border-radius: 50%;
-  width: 32px;
-  height: 32px;
+  padding: 4px;
+}
+
+.completed-icon {
+  color: #67c23a;
+  font-size: 16px;
+}
+
+/* 文件名单元格样式 */
+.filename-cell {
+  cursor: pointer;
+}
+
+.filename-text {
+  font-weight: 500;
+  color: #409eff;
+  margin-bottom: 4px;
+  transition: color 0.2s;
+}
+
+.filename-text:hover {
+  color: #66b1ff;
+}
+
+.file-meta {
   display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: #909399;
+}
+
+/* 标签样式 */
+.video-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.video-tag {
+  margin: 0;
+}
+
+/* 操作按钮样式 */
+.operation-buttons {
+  display: flex;
+  gap: 8px;
   align-items: center;
   justify-content: center;
 }
 
-.completed-icon {
-  color: white;
-  font-size: 18px;
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .video-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+  }
 }
 </style>
 

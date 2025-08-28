@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, HTTPException, Request, BackgroundTasks, UploadFile, File
+from fastapi import APIRouter, Depends, Query, HTTPException, Request, BackgroundTasks, UploadFile, File, Body
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Dict
@@ -43,6 +43,14 @@ def get_scan_progress():
 
 @videosRouter.get("/list", response_model=Page[Video], summary="获取视频列表")
 def get_videos(
+    page: int = Query(1, description="页码"),
+    page_size: int = Query(None, description="每页记录数"),
+    search: str = Query(None, description="搜索关键词"),
+    only_favorites: bool = Query(None, description="只显示收藏"),
+    tag_ids: str = Query(None, description="标签ID列表，逗号分隔"),
+    duration_filter: str = Query(None, description="时长过滤"),
+    sort: str = Query('random', description="排序方式"),
+    random_seed: float = Query(None, description="随机种子"),
     skip: int = Query(0, description="跳过的记录数"),
     limit: int = Query(None, description="返回的记录数"),
     keyword: str = Query(None, description="搜索关键词"),
@@ -53,37 +61,69 @@ def get_videos(
     seed: int = Query(None, description="随机排序种子"),
     db: Session = Depends(get_db)
 ):
-    """获取视频列表，支持按关键字、收藏状态和标签ID进行过滤"""
+    """获取视频列表，兼容前端和后端两种参数格式"""
+    # 优先使用前端格式参数，如果没有则使用后端格式参数
+    final_skip = (page - 1) * (page_size or 20) if page > 1 or page_size else skip
+    final_limit = page_size or limit
+    final_keyword = search or keyword
+    final_favorite = only_favorites if only_favorites is not None else favorite
+    final_tags = tag_ids or tags
+    final_duration = duration_filter or duration
+    final_sort_by = sort if sort != 'random' else (sort_by or 'filename')
+    final_seed = int(random_seed * 1000000) if random_seed else seed
+    
     # 如果没有指定limit，从设置中获取默认值
-    if limit is None:
+    if final_limit is None:
         from ..services.setting_service import SettingService
-        limit = SettingService.get_videos_per_page(db)
+        final_limit = SettingService.get_videos_per_page(db)
     
     # 处理标签参数
     tag_list = None
-    if tags:
+    if final_tags:
         try:
-            tag_list = [int(tag_id) for tag_id in tags.split(',')]
+            tag_list = [int(tag_id) for tag_id in final_tags.split(',')]
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid tag format. Expected comma-separated integers.")
     
     videos, total = VideoService.get_videos_by_filters(
         db, 
-        skip=skip, 
-        limit=limit, 
-        keyword=keyword,
-        is_favorite=favorite,
+        skip=final_skip, 
+        limit=final_limit, 
+        keyword=final_keyword,
+        is_favorite=final_favorite,
         tags=tag_list,
-        duration=duration,
-        sort_by=sort_by,
-        seed=seed
+        duration=final_duration,
+        sort_by=final_sort_by,
+        seed=final_seed
     )
-    total_pages = (total + limit - 1) // limit
+    
+    # 统一返回Page格式
+    total_pages = (total + final_limit - 1) // final_limit
     return Page(
         total=total,
         total_pages=total_pages,
         items=[Video.model_validate(video) for video in videos]
     )
+
+@videosRouter.get("/continue-watching", response_model=List[Video], summary="获取可继续观看的视频")
+def get_continue_watching_videos(
+    limit: int = Query(10, description="返回的记录数"),
+    db: Session = Depends(get_db)
+):
+    """获取可继续观看的视频列表（有播放进度但未看完）"""
+    videos = VideoService.get_continue_watching_videos(db, limit)
+    return [Video.model_validate(video) for video in videos]
+
+
+@videosRouter.get("/recently-watched", response_model=List[Video], summary="获取最近观看的视频")
+def get_recently_watched_videos(
+    limit: int = Query(10, description="返回的记录数"),
+    db: Session = Depends(get_db)
+):
+    """获取最近观看的视频列表"""
+    videos = VideoService.get_recently_watched_videos(db, limit)
+    return [Video.model_validate(video) for video in videos]
+
 
 @videosRouter.get("/{video_id}", response_model=Video, summary="获取视频信息")
 def get_video(video_id: int, db: Session = Depends(get_db)):
@@ -557,21 +597,16 @@ def clear_video_progress(video_id: int, db: Session = Depends(get_db)):
     return {"message": "Video progress cleared successfully"}
 
 
-@videosRouter.get("/recently-watched", response_model=List[Video], summary="获取最近观看的视频")
-def get_recently_watched_videos(
-    limit: int = Query(10, description="返回的记录数"),
+@videosRouter.delete("/progress/batch", summary="批量清除播放进度")
+def clear_multiple_progress(
+    video_ids: List[int] = Body(..., description="要清除进度的视频ID列表"),
     db: Session = Depends(get_db)
 ):
-    """获取最近观看的视频列表"""
-    videos = VideoService.get_recently_watched_videos(db, limit)
-    return [Video.model_validate(video) for video in videos]
-
-
-@videosRouter.get("/continue-watching", response_model=List[Video], summary="获取可继续观看的视频")
-def get_continue_watching_videos(
-    limit: int = Query(10, description="返回的记录数"),
-    db: Session = Depends(get_db)
-):
-    """获取可继续观看的视频列表（有播放进度但未看完）"""
-    videos = VideoService.get_continue_watching_videos(db, limit)
-    return [Video.model_validate(video) for video in videos]
+    """批量清除多个视频的播放进度"""
+    success_count = VideoService.clear_multiple_progress(db, video_ids)
+    
+    return {
+        "message": f"Successfully cleared progress for {success_count} videos",
+        "cleared_count": success_count,
+        "total_requested": len(video_ids)
+    }
