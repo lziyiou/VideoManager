@@ -1,14 +1,17 @@
 # 数据库文件
 /backend/video_manager.db
 *.db
+*.sqlite
+*.sqlite3
 
 # 缩略图
 /thumbnails/
 
-# Python 缓存文件
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
+*.pyo
+*.pyd
 *.so
 .Python
 build/
@@ -28,34 +31,33 @@ wheels/
 *.egg
 PIPFILE.lock
 
-# IDE 配置文件
-.idea/
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+.env/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn-integrity
+
+# Build outputs
+/frontend/dist/
+/frontend/build/
+
+# IDE
 .vscode/
+.idea/
 *.swp
 *.swo
 *~
 
-# 前端依赖和构建文件
-node_modules/
-/frontend/dist/
-/frontend/.temp/
-/frontend/.cache/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# 环境变量文件
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# 日志文件
-*.log
-logs/
-
-# 操作系统生成的文件
+# OS
 .DS_Store
 .DS_Store?
 ._*
@@ -63,21 +65,47 @@ logs/
 .Trashes
 ehthumbs.db
 Thumbs.db
+desktop.ini
 
-# 临时文件
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Temporary files
 *.tmp
 *.temp
+
+# Backup files
 *.bak
 *.backup
 
-# 测试覆盖率报告
-htmlcov/
-.tox/
+# Media files (if not needed in repo)
+*.mp4
+*.avi
+*.mkv
+*.mov
+*.wmv
+*.flv
+*.webm
+*.m4v
+
+# Coverage reports
+coverage/
 .coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
+.nyc_output
+
+# Testing
 .pytest_cache/
+.coverage
+htmlcov/
+
+# Alembic
+/backend/alembic/versions/*.py
+!/backend/alembic/versions/__init__.py

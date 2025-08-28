@@ -330,7 +330,7 @@ const videos = ref([])
 const loading = ref(false)
 const searchKeyword = ref(route.query.keyword || '')
 const currentPage = ref(parseInt(route.query.page) || 1)
-const pageSize = ref(parseInt(route.query.size) || 12)
+const pageSize = ref(parseInt(route.query.size) || 20) // 如果URL中没有size参数，使用默认值20（仅用于前端分页显示）
 const total = ref(0)
 const viewMode = ref(localStorage.getItem('viewMode') || 'grid') // 'list' 或 'grid'
 
@@ -514,8 +514,8 @@ const loadVideos = async () => {
     
     // 构建查询参数
     const params = {
-      skip,
-      limit: pageSize.value
+      skip
+      // 不传递limit参数，让后端使用数据库中的默认值
     }
     
     // 添加收藏过滤参数
@@ -668,11 +668,14 @@ const formatDuration = (duration) => {
 // 监听路由参数变化
 watch(
   () => route.query,
-  () => {
+  async () => {
     const { keyword, page, size, favorite, tags, sort_by, duration, seed } = route.query
     searchKeyword.value = keyword || ''
     currentPage.value = parseInt(page) || 1
-    pageSize.value = parseInt(size) || 12
+    
+    // 如果URL中指定了size参数则使用，否则使用默认值20
+    pageSize.value = size ? parseInt(size) : 20
+    
     onlyFavorites.value = favorite === 'true'
     selectedTagIds.value = tags ? tags.split(',').map(Number) : []
     sortFilter.value = sort_by || 'random'
@@ -692,7 +695,9 @@ const loadAllTags = async () => {
   }
 }
 
-onMounted(() => {
+// 不再需要loadSettings函数，因为后端会自动使用数据库中的默认值
+
+onMounted(async () => {
   loadAllTags()
   // 如果是随机排序且生成了新的种子，更新URL
   if (sortFilter.value === 'random' && randomSeed.value && !route.query.seed) {

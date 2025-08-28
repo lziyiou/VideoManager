@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Test</title>
+</head>
+<body>
+    <h1>API Test</h1>
+    <button onclick="testAPI()">Test Settings API</button>
+    <button onclick="testVideoAPI()">Test Video API with Default Size</button>
+    <div id="result"></div>
+    
+    <script>
+        async function testAPI() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Testing Settings API...';
+            
+            try {
+                console.log('Calling Settings API...');
+                const response = await fetch('/api/settings/videos_per_page');
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                resultDiv.innerHTML = `
+                    <h3>Settings API Success!</h3>
+                    <p><strong>Status:</strong> ${response.status}</p>
+                    <p><strong>Data:</strong> ${JSON.stringify(data, null, 2)}</p>
+                    <p><strong>Videos per page:</strong> ${data.videos_per_page}</p>
+                `;
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.innerHTML = `
+                    <h3>Error!</h3>
+                    <p><strong>Message:</strong> ${error.message}</p>
+                    <p>Check console for more details.</p>
+                `;
+            }
+        }
+        
+        async function testVideoAPI() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Testing Video API...';
+            
+            try {
+                // First get the default page size from settings
+                const settingsResponse = await fetch('/api/settings/videos_per_page');
+                const settingsData = await settingsResponse.json();
+                const defaultPageSize = settingsData.videos_per_page;
+                
+                console.log('Default page size from settings:', defaultPageSize);
+                
+                // Then test video API with that size
+                const videoResponse = await fetch(`/api/videos/list?limit=${defaultPageSize}`);
+                const videoData = await videoResponse.json();
+                
+                console.log('Video API response:', videoData);
+                
+                resultDiv.innerHTML = `
+                    <h3>Video API Test Success!</h3>
+                    <p><strong>Default page size from settings:</strong> ${defaultPageSize}</p>
+                    <p><strong>Total videos:</strong> ${videoData.total}</p>
+                    <p><strong>Total pages:</strong> ${videoData.total_pages}</p>
+                    <p><strong>Items returned:</strong> ${videoData.items.length}</p>
+                    <p><strong>Expected pages with size ${defaultPageSize}:</strong> ${Math.ceil(videoData.total / defaultPageSize)}</p>
+                `;
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.innerHTML = `
+                    <h3>Error!</h3>
+                    <p><strong>Message:</strong> ${error.message}</p>
+                    <p>Check console for more details.</p>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>

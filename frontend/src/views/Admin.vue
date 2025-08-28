@@ -21,6 +21,26 @@
         {{ message }}
       </div>
 
+      <div class="videos-per-page-section">
+        <h2>显示设置</h2>
+        <p class="description">配置每页显示的视频数量。</p>
+        
+        <div class="setting-group">
+          <label for="videos-per-page">每页视频数量：</label>
+          <el-input-number
+            id="videos-per-page"
+            v-model="videosPerPage"
+            :min="1"
+            :max="100"
+            :step="1"
+            size="default"
+            @change="saveVideosPerPage"
+            class="videos-per-page-input"
+          />
+          <span class="setting-hint">范围：1-100</span>
+        </div>
+      </div>
+
       <div class="scan-section">
         <h2>文件扫描</h2>
         <p class="description">扫描视频文件并更新数据库。</p>
@@ -65,6 +85,7 @@ export default {
   data() {
     return {
       selectedDirectory: '',
+      videosPerPage: 20,
       message: '',
       messageType: 'success',
       unsavedChanges: false,
@@ -80,11 +101,17 @@ export default {
       if (newVal !== oldVal) {
         this.unsavedChanges = true
       }
+    },
+    videosPerPage(newVal, oldVal) {
+      if (newVal !== oldVal) {
+        this.unsavedChanges = true
+      }
     }
   },
   beforeRouteLeave(to, from, next) {
     if (this.unsavedChanges) {
       this.saveDirectory()
+      this.saveVideosPerPage()
     }
     next()
   },
@@ -103,8 +130,14 @@ export default {
       try {
         const response = await axios.get('/api/settings/settings')
         const rootDirSetting = response.data.find(setting => setting.key === 'root_directory')
-        this.settings = { root_directory: rootDirSetting ? rootDirSetting.value : '' }
+        const videosPerPageSetting = response.data.find(setting => setting.key === 'videos_per_page')
+        
+        this.settings = { 
+          root_directory: rootDirSetting ? rootDirSetting.value : '',
+          videos_per_page: videosPerPageSetting ? parseInt(videosPerPageSetting.value) : 20
+        }
         this.selectedDirectory = this.settings.root_directory || ''
+        this.videosPerPage = this.settings.videos_per_page || 20
       } catch (error) {
         this.showMessage('加载配置失败：' + (error.response?.data?.detail || error.message), 'error')
       }
@@ -112,6 +145,7 @@ export default {
     handleBeforeUnload(e) {
       if (this.unsavedChanges) {
         this.saveDirectory()
+        this.saveVideosPerPage()
       }
     },
     async saveDirectory() {
@@ -127,6 +161,23 @@ export default {
         this.showMessage('根目录设置已保存', 'success')
         this.unsavedChanges = false
         this.settings.root_directory = this.selectedDirectory
+      } catch (error) {
+        this.showMessage('保存设置失败：' + (error.response?.data?.detail || error.message), 'error')
+      }
+    },
+    async saveVideosPerPage() {
+      if (!this.videosPerPage || this.videosPerPage === this.settings.videos_per_page) {
+        this.unsavedChanges = false;
+        return;
+      }
+
+      try {
+        await axios.post('/api/settings/videos_per_page', {
+          videos_per_page: this.videosPerPage
+        })
+        this.showMessage('每页视频数量设置已保存', 'success')
+        this.unsavedChanges = false
+        this.settings.videos_per_page = this.videosPerPage
       } catch (error) {
         this.showMessage('保存设置失败：' + (error.response?.data?.detail || error.message), 'error')
       }
@@ -341,5 +392,43 @@ h2 {
   margin-top: 10px;
   color: #606266;
   font-size: 14px;
+}
+
+.videos-per-page-section {
+  margin-top: 40px;
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 30px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.videos-per-page-section:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 25px rgba(0, 0, 0, 0.12);
+}
+
+.setting-group {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-top: 20px;
+}
+
+.setting-group label {
+  font-weight: 500;
+  color: #2d3748;
+  min-width: 120px;
+  font-size: 15px;
+}
+
+.videos-per-page-input {
+  width: 120px;
+}
+
+.setting-hint {
+  color: #718096;
+  font-size: 13px;
+  font-style: italic;
 }
 </style>

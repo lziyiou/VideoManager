@@ -44,7 +44,7 @@ def get_scan_progress():
 @videosRouter.get("/list", response_model=Page[Video], summary="获取视频列表")
 def get_videos(
     skip: int = Query(0, description="跳过的记录数"),
-    limit: int = Query(12, description="返回的记录数"),
+    limit: int = Query(None, description="返回的记录数"),
     keyword: str = Query(None, description="搜索关键词"),
     favorite: bool = Query(None, description="收藏状态"),
     tags: str = Query(None, description="标签ID列表，逗号分隔的字符串"),
@@ -54,6 +54,11 @@ def get_videos(
     db: Session = Depends(get_db)
 ):
     """获取视频列表，支持按关键字、收藏状态和标签ID进行过滤"""
+    # 如果没有指定limit，从设置中获取默认值
+    if limit is None:
+        from ..services.setting_service import SettingService
+        limit = SettingService.get_videos_per_page(db)
+    
     # 处理标签参数
     tag_list = None
     if tags:

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PageSize Test</title>
+</head>
+<body>
+    <h1>PageSize Test</h1>
+    <button onclick="testPageSize()">Test Current PageSize</button>
+    <div id="result"></div>
+    
+    <script>
+        async function testPageSize() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = 'Testing PageSize...';
+            
+            try {
+                // 1. 获取设置中的每页视频数量
+                const settingsResponse = await fetch('/api/settings/videos_per_page');
+                const settingsData = await settingsResponse.json();
+                const expectedPageSize = settingsData.videos_per_page;
+                
+                console.log('Expected page size from settings:', expectedPageSize);
+                
+                // 2. 调用视频列表API（不带limit参数，应该使用默认值）
+                const videoResponse = await fetch('/api/videos/list?page=1');
+                const videoData = await videoResponse.json();
+                
+                console.log('Video API response:', videoData);
+                
+                // 3. 计算实际的每页视频数量
+                const actualPageSize = videoData.items.length;
+                const calculatedPageSize = Math.ceil(videoData.total / videoData.total_pages);
+                
+                resultDiv.innerHTML = `
+                    <h3>PageSize Test Results</h3>
+                    <p><strong>Expected page size (from settings):</strong> ${expectedPageSize}</p>
+                    <p><strong>Actual items returned:</strong> ${actualPageSize}</p>
+                    <p><strong>Calculated page size (total/pages):</strong> ${calculatedPageSize}</p>
+                    <p><strong>Total videos:</strong> ${videoData.total}</p>
+                    <p><strong>Total pages:</strong> ${videoData.total_pages}</p>
+                    <p><strong>Status:</strong> ${expectedPageSize === calculatedPageSize ? '✅ PASS' : '❌ FAIL'}</p>
+                `;
+            } catch (error) {
+                console.error('Error:', error);
+                resultDiv.innerHTML = `
+                    <h3>Error!</h3>
+                    <p><strong>Message:</strong> ${error.message}</p>
+                    <p>Check console for more details.</p>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>
