@@ -2,7 +2,7 @@
   <div class="home">
     <el-row :gutter="20">
       <el-col :span="24">
-        <h1>Video Manager - 视频管理系统</h1>
+        <h1>🎬 影音库 - 智能视频管理平台        </h1>
         
         <!-- 继续观看区域 -->
         <ContinueWatching 
