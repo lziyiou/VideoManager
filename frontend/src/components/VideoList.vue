@@ -192,6 +192,20 @@
               class="thumbnail-image"
             />
             <el-icon class="play-icon"><VideoPlay /></el-icon>
+            <!-- 播放进度条 -->
+            <div v-if="video.watch_progress > 0 && !video.is_completed" class="progress-overlay">
+              <div class="progress-bar">
+                <div 
+                  class="progress-fill" 
+                  :style="{ width: video.watch_progress + '%' }"
+                ></div>
+              </div>
+              <div class="progress-text">{{ Math.round(video.watch_progress) }}%</div>
+            </div>
+            <!-- 已完成标记 -->
+            <div v-if="video.is_completed" class="completed-overlay">
+              <el-icon class="completed-icon"><Check /></el-icon>
+            </div>
           </div>
           <div class="video-info">
             <div class="video-title" :title="video.filename">{{ video.filename }}</div>
@@ -298,7 +312,7 @@
 
 <script setup>
 import { ref, onMounted, watch } from 'vue'
-import { Search, Refresh, VideoPlay, List, Grid, Plus, Edit, Star, StarFilled, Warning, WarningFilled, Delete } from '@element-plus/icons-vue'
+import { Search, Refresh, VideoPlay, List, Grid, Plus, Edit, Star, StarFilled, Warning, WarningFilled, Delete, Check } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 // import axios from 'axios'; // Replaced by apiClient
 import apiClient from '../services/api_client';
@@ -687,6 +701,11 @@ onMounted(() => {
     loadVideos()
   }
 })
+
+// 暴露方法给父组件
+defineExpose({
+  loadVideos
+})
 </script>
 
 <style scoped>
@@ -869,6 +888,61 @@ onMounted(() => {
 .sort-filter {
   width: 130px;
   margin-left: 12px;
+}
+
+/* 播放进度条样式 */
+.progress-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 4px;
+  background-color: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-right: 8px;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: #409EFF;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* 已完成标记样式 */
+.completed-overlay {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background-color: rgba(67, 160, 71, 0.9);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.completed-icon {
+  color: white;
+  font-size: 18px;
 }
 </style>
 

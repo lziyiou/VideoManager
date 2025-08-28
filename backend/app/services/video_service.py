@@ -637,3 +637,102 @@ class VideoService:
         except Exception as e:
             db.rollback()
             raise HTTPException(status_code=400, detail=f"移除标签失败：{str(e)}")
+
+    @staticmethod
+    def update_video_progress(db: Session, video_id: int, last_position: float, 
+                            watch_progress: float = None, is_completed: bool = None) -> bool:
+        """更新视频播放进度"""
+        try:
+            video = db.query(Video).filter(Video.id == video_id).first()
+            if not video:
+                return False
+
+            video.last_position = last_position
+            video.last_watched_at = datetime.now()
+            
+            if watch_progress is not None:
+                video.watch_progress = watch_progress
+            else:
+                # 自动计算观看进度百分比
+                if video.duration > 0:
+                    video.watch_progress = min(100.0, (last_position / video.duration) * 100)
+            
+            if is_completed is not None:
+                video.is_completed = is_completed
+            else:
+                # 自动判断是否看完（观看进度超过95%）
+                video.is_completed = video.watch_progress >= 95.0
+
+            db.commit()
+            return True
+        except Exception as e:
+            db.rollback()
+            print(f"Error updating video progress: {str(e)}")
+            return False
+
+    @staticmethod
+    def get_video_progress(db: Session, video_id: int) -> dict:
+        """获取视频播放进度"""
+        try:
+            video = db.query(Video).filter(Video.id == video_id).first()
+            if not video:
+                return None
+
+            return {
+                "video_id": video.id,
+                "last_position": video.last_position,
+                "watch_progress": video.watch_progress,
+                "last_watched_at": video.last_watched_at,
+                "is_completed": video.is_completed
+            }
+        except Exception as e:
+            print(f"Error getting video progress: {str(e)}")
+            return None
+
+    @staticmethod
+    def get_recently_watched_videos(db: Session, limit: int = 10) -> List[Video]:
+        """获取最近观看的视频列表"""
+        try:
+            return db.query(Video).filter(
+                Video.last_watched_at.isnot(None)
+            ).order_by(
+                Video.last_watched_at.desc()
+            ).limit(limit).all()
+        except Exception as e:
+            print(f"Error getting recently watched videos: {str(e)}")
+            return []
+
+    @staticmethod
+    def get_continue_watching_videos(db: Session, limit: int = 10) -> List[Video]:
+        """获取可继续观看的视频列表（有播放进度但未看完）"""
+        try:
+            return db.query(Video).filter(
+                Video.last_position > 0,
+                Video.is_completed == False,
+                Video.last_watched_at.isnot(None)
+            ).order_by(
+                Video.last_watched_at.desc()
+            ).limit(limit).all()
+        except Exception as e:
+            print(f"Error getting continue watching videos: {str(e)}")
+            return []
+
+    @staticmethod
+    def clear_video_progress(db: Session, video_id: int) -> bool:
+        """清除视频播放进度"""
+        try:
+            video = db.query(Video).filter(Video.id == video_id).first()
+            if not video:
+                return False
+
+            video.last_position = 0.0
+            video.watch_progress = 0.0
+            video.last_watched_at = None
+            video.is_completed = False
+
+            db.commit()
+            return True
+        except Exception as e:
+            db.rollback()
+            print(f"Error clearing video progress: {str(e)}")
+            return False

@@ -48,6 +48,38 @@ const loading = ref(true)
 const videoUrl = ref('')
 let player = null
 let isClosing = ref(false)  // 添加关闭状态标志
+let progressUpdateTimer = null  // 播放进度更新定时器
+let lastSavedPosition = 0  // 上次保存的播放位置
+const PROGRESS_UPDATE_INTERVAL = 5000  // 每5秒更新一次播放进度
+const MIN_PROGRESS_SAVE_THRESHOLD = 5  // 最小保存进度阈值（秒）
+
+// 播放进度相关API调用
+const updateVideoProgress = async (position, duration) => {
+  try {
+    const progress = duration > 0 ? (position / duration) * 100 : 0
+    const isCompleted = progress >= 95 // 播放进度超过95%认为已完成
+    
+    await axios.put(`/api/videos/${props.videoId}/progress`, {
+      last_position: position,
+      watch_progress: progress,
+      is_completed: isCompleted
+    })
+    
+    lastSavedPosition = position
+  } catch (error) {
+    console.error('更新播放进度失败:', error)
+  }
+}
+
+const getVideoProgress = async () => {
+  try {
+    const response = await axios.get(`/api/videos/${props.videoId}/progress`)
+    return response.data
+  } catch (error) {
+    console.error('获取播放进度失败:', error)
+    return null
+  }
+}
 
 // 使用potplayer打开视频
 const openInPotplayer = () => {
@@ -223,7 +255,7 @@ const initPlayer = () => {
   })
 
   // 事件监听
-  player.on('ready', () => {
+  player.on('ready', async () => {
     loading.value = false
     
     // 手动将自定义按钮添加到控件栏中
@@ -241,6 +273,33 @@ const initPlayer = () => {
         controlsContainer.appendChild(screenshotButton)
         controlsContainer.appendChild(clipboardImage)
       }
+    }
+    
+    // 获取并恢复播放进度
+    const progressData = await getVideoProgress()
+    if (progressData && progressData.last_position > MIN_PROGRESS_SAVE_THRESHOLD && !progressData.is_completed) {
+      // 显示断点续播提示
+      const resumeTime = Math.floor(progressData.last_position)
+      const minutes = Math.floor(resumeTime / 60)
+      const seconds = resumeTime % 60
+      const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`
+      
+      ElMessageBox.confirm(
+        `检测到上次播放进度：${timeStr}，是否从上次位置继续播放？`,
+        '断点续播',
+        {
+          confirmButtonText: '继续播放',
+          cancelButtonText: '从头播放',
+          type: 'info'
+        }
+      ).then(() => {
+        // 用户选择继续播放
+        player.currentTime = progressData.last_position
+        ElMessage.success('已跳转到上次播放位置')
+      }).catch(() => {
+        // 用户选择从头播放，清除播放进度
+        updateVideoProgress(0, player.duration || 0)
+      })
     }
     
     // 检测是否为iOS设备
@@ -269,6 +328,53 @@ const initPlayer = () => {
       }
     } catch (error) {
       console.error('播放器初始化错误:', error)
+    }
+  })
+  
+  // 添加播放进度跟踪事件监听
+  player.on('play', () => {
+    // 开始播放时启动进度更新定时器
+    if (progressUpdateTimer) {
+      clearInterval(progressUpdateTimer)
+    }
+    
+    progressUpdateTimer = setInterval(() => {
+      if (player && !player.paused && player.duration > 0) {
+        const currentTime = player.currentTime
+        const duration = player.duration
+        
+        // 只有当播放位置变化超过阈值时才更新
+        if (Math.abs(currentTime - lastSavedPosition) >= MIN_PROGRESS_SAVE_THRESHOLD) {
+          updateVideoProgress(currentTime, duration)
+        }
+      }
+    }, PROGRESS_UPDATE_INTERVAL)
+  })
+  
+  player.on('pause', () => {
+    // 暂停时立即保存当前进度
+    if (player && player.duration > 0) {
+      updateVideoProgress(player.currentTime, player.duration)
+    }
+  })
+  
+  player.on('ended', () => {
+    // 播放结束时标记为已完成
+    if (player && player.duration > 0) {
+      updateVideoProgress(player.duration, player.duration)
+    }
+    
+    // 清除定时器
+    if (progressUpdateTimer) {
+      clearInterval(progressUpdateTimer)
+      progressUpdateTimer = null
+    }
+  })
+  
+  player.on('seeked', () => {
+    // 用户手动跳转时立即保存进度
+    if (player && player.duration > 0) {
+      updateVideoProgress(player.currentTime, player.duration)
     }
   })
   
@@ -347,7 +453,18 @@ async function uploadClipboardImage() {
 const handleClose = () => {
   isClosing.value = true  // 设置关闭状态标志
   
+  // 清除播放进度更新定时器
+  if (progressUpdateTimer) {
+    clearInterval(progressUpdateTimer)
+    progressUpdateTimer = null
+  }
+  
   if (player) {
+    // 在关闭前保存最后的播放进度
+    if (player.duration > 0 && player.currentTime > MIN_PROGRESS_SAVE_THRESHOLD) {
+      updateVideoProgress(player.currentTime, player.duration)
+    }
+    
     // 暂停播放
     player.pause()
     // 清空视频源以停止加载
@@ -365,6 +482,10 @@ const handleClose = () => {
       console.error('重置播放器状态失败:', e)
     }
   }
+  
+  // 重置播放进度相关变量
+  lastSavedPosition = 0
+  
   // 清空视频URL
   videoUrl.value = ''
   // 清空播放器容器
@@ -454,7 +575,18 @@ watchEffect(() => {
 
 // 组件卸载时清理
 onBeforeUnmount(() => {
+  // 清除播放进度更新定时器
+  if (progressUpdateTimer) {
+    clearInterval(progressUpdateTimer)
+    progressUpdateTimer = null
+  }
+  
   if (player) {
+    // 在卸载前保存最后的播放进度
+    if (player.duration > 0 && player.currentTime > MIN_PROGRESS_SAVE_THRESHOLD) {
+      updateVideoProgress(player.currentTime, player.duration)
+    }
+    
     // 先暂停播放并清空源
     player.pause()
     player.source = {
@@ -474,6 +606,10 @@ onBeforeUnmount(() => {
     player.destroy()
     player = null
   }
+  
+  // 重置播放进度相关变量
+  lastSavedPosition = 0
+  
   // 清空视频URL和播放器容器
   videoUrl.value = ''
   if (playerContainer.value) {

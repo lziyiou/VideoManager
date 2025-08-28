@@ -12,7 +12,7 @@ from ..services.video_service import VideoService
 from ..services.tag_service import TagService
 from ..models.video import Video as VideoModel
 from ..models.setting import Setting
-from ..schemas.videos import Video
+from ..schemas.videos import Video, VideoProgressUpdate, VideoProgress
 from ..schemas.page import Page
 from ..schemas.tags import VideoTagUpdate
 from ..core.scan_status import get_scan_status, reset_scan_status
@@ -506,3 +506,67 @@ def cleanup_orphaned_thumbnails(db: Session = Depends(get_db)):
         }
     else:
         raise HTTPException(status_code=500, detail=result["message"])
+
+
+# 播放进度相关API
+@videosRouter.put("/{video_id}/progress", summary="更新视频播放进度")
+def update_video_progress(
+    video_id: int, 
+    progress_data: VideoProgressUpdate, 
+    db: Session = Depends(get_db)
+):
+    """更新视频播放进度"""
+    success = VideoService.update_video_progress(
+        db, 
+        video_id, 
+        progress_data.last_position,
+        progress_data.watch_progress,
+        progress_data.is_completed
+    )
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Video not found or failed to update progress")
+    
+    return {"message": "Video progress updated successfully"}
+
+
+@videosRouter.get("/{video_id}/progress", response_model=VideoProgress, summary="获取视频播放进度")
+def get_video_progress(video_id: int, db: Session = Depends(get_db)):
+    """获取视频播放进度"""
+    progress = VideoService.get_video_progress(db, video_id)
+    
+    if not progress:
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    return VideoProgress(**progress)
+
+
+@videosRouter.delete("/{video_id}/progress", summary="清除视频播放进度")
+def clear_video_progress(video_id: int, db: Session = Depends(get_db)):
+    """清除视频播放进度"""
+    success = VideoService.clear_video_progress(db, video_id)
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Video not found or failed to clear progress")
+    
+    return {"message": "Video progress cleared successfully"}
+
+
+@videosRouter.get("/recently-watched", response_model=List[Video], summary="获取最近观看的视频")
+def get_recently_watched_videos(
+    limit: int = Query(10, description="返回的记录数"),
+    db: Session = Depends(get_db)
+):
+    """获取最近观看的视频列表"""
+    videos = VideoService.get_recently_watched_videos(db, limit)
+    return [Video.model_validate(video) for video in videos]
+
+
+@videosRouter.get("/continue-watching", response_model=List[Video], summary="获取可继续观看的视频")
+def get_continue_watching_videos(
+    limit: int = Query(10, description="返回的记录数"),
+    db: Session = Depends(get_db)
+):
+    """获取可继续观看的视频列表（有播放进度但未看完）"""
+    videos = VideoService.get_continue_watching_videos(db, limit)
+    return [Video.model_validate(video) for video in videos]
