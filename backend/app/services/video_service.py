@@ -121,7 +121,7 @@ class VideoService:
             if cleaned_thumbnails > 0:
                 message += f"和 {cleaned_thumbnails} 个对应的缩略图文件"
             update_scan_progress(0, message + "...")
-        video_extensions = ('.mp4', '.avi', '.mkv', '.mov', '.wmv', '3gp', 'ts', '.flv', '.webm', '.m3u8', 'mpeg')
+        video_extensions = ('.mp4', '.avi', '.mkv', '.mov', '.wmv', '.3gp', '.ts', '.flv', '.webm', '.m3u8', '.mpeg')
         def process_video_file(file_info):
             filepath, rel_path = file_info
             try:
