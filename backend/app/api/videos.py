@@ -6,6 +6,7 @@ import os
 import time
 import asyncio
 import logging
+from datetime import datetime
 from ..core.database import get_db
 from ..services.video_service import VideoService
 from ..services.tag_service import TagService
@@ -111,19 +112,39 @@ def get_video_thumbnail(video_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Video not found")
     
     # 检查是否已有缩略图且文件存在
-    if video.thumbnail_generated and video.thumbnail_path and os.path.exists(video.thumbnail_path):
-        return FileResponse(video.thumbnail_path)
+    if video.thumbnail_generated and video.thumbnail_path:
+        # 构建缩略图的绝对路径 - 修复路径计算
+        # 从backend目录向上两级到达项目根目录
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        thumbnail_abs_path = os.path.join(project_root, video.thumbnail_path)
+        if os.path.exists(thumbnail_abs_path):
+            return FileResponse(thumbnail_abs_path)
     
     # 按需生成缩略图
     try:
-        thumbnail_path = VideoService.generate_thumbnail(video.filepath)
-        if thumbnail_path and os.path.exists(thumbnail_path):
-            # 更新数据库中的缩略图路径和状态
-            video.thumbnail_path = thumbnail_path
-            video.thumbnail_generated = True
-            db.commit()
-            logger.info(f"Generated thumbnail for video {video_id}: {thumbnail_path}")
-            return FileResponse(thumbnail_path)
+        # 获取root_directory设置
+        root_dir = db.query(Setting).filter(Setting.key == "root_directory").first()
+        if not root_dir or not root_dir.value:
+            raise HTTPException(status_code=404, detail="Root directory not set")
+        
+        # 构建视频文件的绝对路径
+        video_abs_path = os.path.join(root_dir.value, video.filepath)
+        
+        thumbnail_rel_path = VideoService.generate_thumbnail(video_abs_path)
+        if thumbnail_rel_path:
+            # 构建缩略图的绝对路径用于文件检查和返回 - 修复路径计算
+            # 从backend目录向上两级到达项目根目录
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+            thumbnail_abs_path = os.path.join(project_root, thumbnail_rel_path)
+            
+            if os.path.exists(thumbnail_abs_path):
+                # 更新数据库中的缩略图路径和状态（存储相对路径）
+                video.thumbnail_path = thumbnail_rel_path
+                video.thumbnail_generated = True
+                video.updated_at = datetime.now()
+                db.commit()
+                logger.info(f"Generated thumbnail for video {video_id}: {thumbnail_rel_path}")
+                return FileResponse(thumbnail_abs_path)
         else:
             # 标记生成失败，避免重复尝试
             video.thumbnail_generated = False
@@ -336,6 +357,60 @@ async def set_video_thumbnail(video_id: int, thumbnail: UploadFile = File(...), 
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@videosRouter.post("/{video_id}/regenerate-thumbnail", summary="重新生成视频缩略图")
+def regenerate_video_thumbnail(video_id: int, db: Session = Depends(get_db)):
+    """强制重新生成视频缩略图，清理旧文件"""
+    # 获取视频信息
+    video = VideoService.get_video_by_id(db, video_id)
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    try:
+        # 获取root_directory设置
+        root_dir = db.query(Setting).filter(Setting.key == "root_directory").first()
+        if not root_dir or not root_dir.value:
+            raise HTTPException(status_code=404, detail="Root directory not set")
+        
+        # 构建视频文件的绝对路径
+        video_abs_path = os.path.join(root_dir.value, video.filepath)
+        if not os.path.exists(video_abs_path):
+            raise HTTPException(status_code=404, detail="Video file not found")
+        
+        # 强制重新生成缩略图，传递旧缩略图路径以便清理
+        old_thumbnail_path = video.thumbnail_path
+        thumbnail_rel_path = VideoService.generate_thumbnail(
+            video_abs_path, 
+            force_regenerate=True, 
+            old_thumbnail_path=old_thumbnail_path
+        )
+        
+        if thumbnail_rel_path:
+            # 更新数据库中的缩略图路径和状态
+            video.thumbnail_path = thumbnail_rel_path
+            video.thumbnail_generated = True
+            video.updated_at = datetime.now()
+            db.commit()
+            
+            logger.info(f"Regenerated thumbnail for video {video_id}: {thumbnail_rel_path}")
+            return {
+                "message": "Thumbnail regenerated successfully", 
+                "thumbnail_path": thumbnail_rel_path,
+                "old_thumbnail_cleaned": bool(old_thumbnail_path)
+            }
+        else:
+            # 标记生成失败
+            video.thumbnail_generated = False
+            db.commit()
+            raise HTTPException(status_code=500, detail="Failed to regenerate thumbnail")
+            
+    except Exception as e:
+        # 标记生成失败
+        video.thumbnail_generated = False
+        db.commit()
+        logger.error(f"Error regenerating thumbnail for video {video_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to regenerate thumbnail: {str(e)}")
+
+
 @videosRouter.put("/{video_id}", summary="重命名")
 async def rename(video_id: int, new_name: str, db: Session = Depends(get_db)):
     """重命名视频文件"""
@@ -416,3 +491,18 @@ def delete_video(video_id: int, db: Session = Depends(get_db)):
     db.commit()
 
     return {"message": "Video deleted successfully"}
+
+
+@videosRouter.post("/cleanup-thumbnails", summary="清理孤立的缩略图文件")
+def cleanup_orphaned_thumbnails(db: Session = Depends(get_db)):
+    """清理孤立的缩略图文件"""
+    result = VideoService.cleanup_orphaned_thumbnails(db)
+    
+    if result["success"]:
+        return {
+            "message": result["message"],
+            "cleaned_count": result["cleaned_count"],
+            "cleaned_size_mb": round(result["cleaned_size"] / 1024 / 1024, 2)
+        }
+    else:
+        raise HTTPException(status_code=500, detail=result["message"])

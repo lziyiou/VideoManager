@@ -183,9 +183,14 @@
           shadow="hover"
           @click="handlePlay(video)"
         >
-          <div class="video-thumbnail" :style="{
-            backgroundImage: `url(/api/videos/${video.id}/thumbnail?t=${video.updated_at || Date.now()})`
-          }">
+          <div class="video-thumbnail">
+            <img 
+              :src="`/api/videos/${video.id}/thumbnail?t=${video.updated_at || Date.now()}`"
+              @load="handleThumbnailLoad(video, $event)"
+              @error="handleThumbnailError(video, $event)"
+              alt="视频缩略图"
+              class="thumbnail-image"
+            />
             <el-icon class="play-icon"><VideoPlay /></el-icon>
           </div>
           <div class="video-info">
@@ -371,6 +376,25 @@ const updateThumbnail = (videoId) => {
     // 更新视频的时间戳
     videos.value[videoIndex].updated_at = Date.now()
   }
+}
+
+// 处理缩略图加载成功
+const handleThumbnailLoad = (video, event) => {
+  // 缩略图加载成功，无需额外处理
+  // 后端已经更新了updated_at字段，下次刷新时会使用新的时间戳
+}
+
+// 处理缩略图加载失败
+const handleThumbnailError = (video, event) => {
+  console.log(`视频 ${video.id} 的缩略图加载失败，尝试重新加载`)
+  // 延迟2秒后重新尝试加载缩略图
+  setTimeout(() => {
+    const videoIndex = videos.value.findIndex(v => v.id === video.id)
+    if (videoIndex !== -1) {
+      // 更新时间戳以强制重新加载
+      videos.value[videoIndex].updated_at = Date.now()
+    }
+  }, 2000)
 }
 
 // 修改文件名
@@ -742,9 +766,6 @@ onMounted(() => {
 .video-thumbnail {
   aspect-ratio: 16/9;
   background-color: #f5f7fa;
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -783,6 +804,15 @@ onMounted(() => {
   opacity: 1;
   color: #909399;
   opacity: 0.7;
+}
+
+.thumbnail-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 
 .video-info {

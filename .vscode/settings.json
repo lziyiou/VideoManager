@@ -6,5 +6,6 @@
             "database": "${workspaceFolder:VideoManager}/backend/video_manager.db",
             "name": "vm_db"
         }
-    ]
+    ],
+    "sqltools.useNodeRuntime": true
 }

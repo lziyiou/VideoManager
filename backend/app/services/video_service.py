@@ -17,14 +17,31 @@ class VideoService:
         """获取视频时长（秒）"""
         try:
             probe = ffmpeg.probe(filepath)
-            video_info = next(s for s in probe['streams'] if s['codec_type'] == 'video')
-            duration = float(probe['format']['duration'])
-            if duration <= 0:
-                raise ValueError(f"Invalid duration value: {duration}")
-            return duration
+            
+            # 首先尝试从format中获取时长
+            if 'format' in probe and 'duration' in probe['format']:
+                duration = float(probe['format']['duration'])
+                if duration > 0:
+                    return duration
+            
+            # 如果format中没有时长信息，尝试从视频流中获取
+            video_streams = [s for s in probe.get('streams', []) if s.get('codec_type') == 'video']
+            if video_streams:
+                video_info = video_streams[0]
+                if 'duration' in video_info:
+                    duration = float(video_info['duration'])
+                    if duration > 0:
+                        return duration
+            
+            # 如果都没有找到有效时长，返回错误值
+            print(f"No valid duration found for {filepath}")
+            return -1.0
+            
+        except ffmpeg.Error as e:
+            print(f"FFmpeg error getting duration for {filepath}: {str(e)}")
+            return -1.0
         except Exception as e:
             print(f"Error getting duration for {filepath}: {str(e)}")
-            # 如果获取时长失败，返回一个负数表示错误
             return -1.0
 
     @staticmethod
@@ -78,39 +95,74 @@ class VideoService:
         update_scan_progress(0, "正在清理不存在的视频记录...")
         all_videos = db.query(Video).all()
         deleted_count = 0
+        cleaned_thumbnails = 0
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        
         for video in all_videos:
             abs_path = VideoService._get_abs_path(root_path, video.filepath)
             if not os.path.exists(abs_path) or not abs_path.startswith(root_path):
+                # 删除对应的缩略图文件
+                if video.thumbnail_path:
+                    thumbnail_abs_path = os.path.join(project_root, video.thumbnail_path)
+                    if os.path.exists(thumbnail_abs_path):
+                        try:
+                            os.remove(thumbnail_abs_path)
+                            cleaned_thumbnails += 1
+                            print(f"Deleted orphaned thumbnail: {thumbnail_abs_path}")
+                        except Exception as e:
+                            print(f"Failed to delete thumbnail {thumbnail_abs_path}: {str(e)}")
+                
                 db.delete(video)
                 deleted_count += 1
+        
         if deleted_count > 0:
             db.commit()
-            update_scan_progress(0, f"已清理 {deleted_count} 个无效的视频记录...")
+            message = f"已清理 {deleted_count} 个无效的视频记录"
+            if cleaned_thumbnails > 0:
+                message += f"和 {cleaned_thumbnails} 个对应的缩略图文件"
+            update_scan_progress(0, message + "...")
         video_extensions = ('.mp4', '.avi', '.mkv', '.mov', '.wmv', '3gp', 'ts', '.flv', '.webm', '.m3u8', 'mpeg')
         def process_video_file(file_info):
             filepath, rel_path = file_info
             try:
-                video = db.query(Video).filter(Video.filepath == filepath).first()
-                if not video:
-                    video = db.query(Video).filter(Video.filepath == rel_path).first()
-                    if video:
-                        video.filepath = filepath
+                # 使用原生SQL查询避免ORM问题
+                from sqlalchemy import text
+                result = db.execute(text(
+                    "SELECT id FROM videos WHERE filepath = :rel_path OR filepath = :full_path LIMIT 1"
+                ), {"rel_path": rel_path, "full_path": filepath})
+                existing_id = result.scalar()
+                
+                # 检查文件修改时间，如果数据库记录较新则跳过
                 file_mtime = datetime.fromtimestamp(os.path.getmtime(filepath))
-                if video and video.updated_at and video.updated_at >= file_mtime:
-                    return None
+                if existing_id:
+                    video = db.query(Video).filter(Video.id == existing_id).first()
+                    if video and video.updated_at and video.updated_at >= file_mtime:
+                        return None
+                
+                # 获取文件信息
                 size = os.path.getsize(filepath) / (1024 * 1024)
                 duration = VideoService.get_video_duration(filepath)
+                
                 if duration > 0:
                     # 扫描时不生成缩略图，只保存基本信息
-                    if video:
-                        video.size = round(size, 2)
-                        video.duration = duration
-                        # 保持原有的缩略图路径，不在扫描时重新生成
-                        video.updated_at = datetime.now()
+                    if existing_id:
+                        # 使用原生SQL更新现有记录
+                        db.execute(text(
+                            "UPDATE videos SET filepath = :rel_path, size = :size, duration = :duration, updated_at = :updated_at WHERE id = :id"
+                        ), {
+                            "rel_path": rel_path,
+                            "size": round(size, 2),
+                            "duration": duration,
+                            "updated_at": datetime.now(),
+                            "id": existing_id
+                        })
+                        # 返回更新后的视频对象
+                        return db.query(Video).filter(Video.id == existing_id).first()
                     else:
+                        # 创建新记录
                         video = Video(
                             filename=os.path.basename(filepath),
-                            filepath=filepath,
+                            filepath=rel_path,  # 使用相对路径存储
                             size=round(size, 2),
                             duration=duration,
                             thumbnail_path=None,  # 扫描时不生成缩略图
@@ -118,9 +170,30 @@ class VideoService:
                             updated_at=datetime.now()
                         )
                         db.add(video)
-                    return video
+                        return video
             except Exception as e:
+                import traceback
                 print(f"Error processing {filepath}: {str(e)}")
+                print(f"Traceback: {traceback.format_exc()}")
+                
+                # 如果是数据库约束错误，尝试查找已存在的记录并更新
+                if "UNIQUE constraint failed" in str(e):
+                    try:
+                        existing_video = db.query(Video).filter(
+                            (Video.filepath == rel_path) | (Video.filepath == filepath)
+                        ).first()
+                        if existing_video:
+                            existing_video.filepath = rel_path
+                            try:
+                                existing_video.size = round(os.path.getsize(filepath) / (1024 * 1024), 2)
+                                existing_video.duration = VideoService.get_video_duration(filepath)
+                                existing_video.updated_at = datetime.now()
+                                return existing_video
+                            except Exception as size_e:
+                                print(f"Error updating file info for {filepath}: {str(size_e)}")
+                                return existing_video
+                    except Exception as inner_e:
+                        print(f"Error handling duplicate record for {filepath}: {str(inner_e)}")
             return None
         try:
             video_files = []
@@ -139,17 +212,49 @@ class VideoService:
             def update_progress():
                 nonlocal processed_files
                 VideoService._update_progress(processed_files, total_files, f"正在处理第 {processed_files}/{total_files} 个文件...")
-            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-                futures = [executor.submit(process_video_file, file_info) for file_info in video_files]
-                for future in concurrent.futures.as_completed(futures):
-                    try:
-                        future.result()
-                        processed_files += 1
-                        update_progress()
-                    except Exception as e:
-                        print(f"Error processing video: {str(e)}")
-            db.commit()
-            update_scan_progress(1, "扫描完成", True)
+            # 使用批量处理来减少数据库锁定时间
+            batch_size = 10
+            for i in range(0, len(video_files), batch_size):
+                batch = video_files[i:i + batch_size]
+                
+                with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                    futures = [executor.submit(process_video_file, file_info) for file_info in batch]
+                    for future in concurrent.futures.as_completed(futures):
+                        try:
+                            result = future.result()
+                            processed_files += 1
+                            update_progress()
+                        except Exception as e:
+                            print(f"Error processing video: {str(e)}")
+                            processed_files += 1  # 即使出错也要增加计数
+                            update_progress()
+                
+                # 每个批次提交一次
+                try:
+                    db.commit()
+                except Exception as e:
+                    print(f"Error committing batch: {str(e)}")
+                    db.rollback()
+            
+            # 最终提交
+            try:
+                db.commit()
+            except Exception as e:
+                print(f"Error in final commit: {str(e)}")
+                db.rollback()
+            
+            # 扫描完成后清理孤立的缩略图文件
+            update_scan_progress(0.95, "正在清理孤立的缩略图文件...")
+            try:
+                cleanup_result = VideoService.cleanup_orphaned_thumbnails(db)
+                if cleanup_result["success"] and cleanup_result["cleaned_count"] > 0:
+                    print(f"Cleaned {cleanup_result['cleaned_count']} orphaned thumbnails during scan")
+                    update_scan_progress(1, f"扫描完成，清理了 {cleanup_result['cleaned_count']} 个孤立缩略图", True)
+                else:
+                    update_scan_progress(1, "扫描完成", True)
+            except Exception as e:
+                print(f"Error cleaning thumbnails during scan: {str(e)}")
+                update_scan_progress(1, "扫描完成（缩略图清理失败）", True)
         except Exception as e:
             print(f"Scan error: {str(e)}")
             update_scan_progress(1, f"扫描出错: {str(e)}", True)
@@ -165,21 +270,48 @@ class VideoService:
         return db.query(Video).filter(Video.id == video_id).first()
 
     @staticmethod
-    def generate_thumbnail(video_path: str) -> str:
-        """生成视频缩略图"""
+    def generate_thumbnail(video_path: str, force_regenerate: bool = False, old_thumbnail_path: str = None) -> str:
+        """生成视频缩略图
+        
+        Args:
+            video_path: 视频文件路径
+            force_regenerate: 是否强制重新生成缩略图
+            old_thumbnail_path: 旧的缩略图路径，如果提供则在生成新缩略图前删除
+        """
         try:
-            # 确保thumbnails目录存在
-            video_dir = os.path.dirname(video_path)
-            thumbnails_dir = os.path.join(video_dir, 'thumbnails')
+            # 使用项目根目录下的thumbnails目录，而不是视频文件所在目录
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+            thumbnails_dir = os.path.join(project_root, 'thumbnails')
             os.makedirs(thumbnails_dir, exist_ok=True)
 
-            # 生成缩略图文件名
-            thumbnail_filename = f"{os.path.basename(video_path).replace('.', '_')}_thumb.jpg"
+            # 生成缩略图文件名，使用视频文件的完整路径hash来避免重名
+            import hashlib
+            path_hash = hashlib.md5(video_path.encode()).hexdigest()[:8]
+            video_name = os.path.splitext(os.path.basename(video_path))[0]
+            thumbnail_filename = f"{video_name}_{path_hash}_thumb.jpg"
             thumbnail_path = os.path.join(thumbnails_dir, thumbnail_filename)
 
+            # 如果提供了旧缩略图路径，先删除旧文件
+            if old_thumbnail_path:
+                old_thumbnail_abs_path = os.path.join(project_root, old_thumbnail_path) if not os.path.isabs(old_thumbnail_path) else old_thumbnail_path
+                if os.path.exists(old_thumbnail_abs_path) and old_thumbnail_abs_path != thumbnail_path:
+                    try:
+                        os.remove(old_thumbnail_abs_path)
+                        print(f"Deleted old thumbnail: {old_thumbnail_abs_path}")
+                    except Exception as e:
+                        print(f"Failed to delete old thumbnail {old_thumbnail_abs_path}: {str(e)}")
+
             # 检查是否已经存在同名的缩略图文件
-            if os.path.exists(thumbnail_path):
-                return thumbnail_path
+            if os.path.exists(thumbnail_path) and not force_regenerate:
+                return os.path.relpath(thumbnail_path, project_root)
+
+            # 如果强制重新生成，删除现有文件
+            if force_regenerate and os.path.exists(thumbnail_path):
+                try:
+                    os.remove(thumbnail_path)
+                    print(f"Deleted existing thumbnail for regeneration: {thumbnail_path}")
+                except Exception as e:
+                    print(f"Failed to delete existing thumbnail {thumbnail_path}: {str(e)}")
 
             # 使用ffmpeg生成缩略图
             stream = ffmpeg.input(video_path, ss='00:00:01')
@@ -187,7 +319,12 @@ class VideoService:
             stream = ffmpeg.output(stream, thumbnail_path, vframes=1)
             ffmpeg.run(stream, overwrite_output=True, capture_stdout=True, capture_stderr=True)
             
-            return thumbnail_path
+            # 验证缩略图文件是否成功生成
+            if not os.path.exists(thumbnail_path) or os.path.getsize(thumbnail_path) == 0:
+                raise Exception("Generated thumbnail file is empty or does not exist")
+            
+            # 返回相对路径
+            return os.path.relpath(thumbnail_path, project_root)
         except Exception as e:
             print(f"Error generating thumbnail for {video_path}: {str(e)}")
             return ""
@@ -229,13 +366,26 @@ class VideoService:
             if not video:
                 raise HTTPException(status_code=404, detail="Video not found")
 
-            # 确保thumbnails目录存在
-            video_dir = os.path.dirname(video.filepath)
-            thumbnails_dir = os.path.join(video_dir, 'thumbnails')
+            # 使用项目根目录下的thumbnails目录，而不是视频文件所在目录
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+            thumbnails_dir = os.path.join(project_root, 'thumbnails')
             os.makedirs(thumbnails_dir, exist_ok=True)
 
-            # 生成缩略图文件名
-            thumbnail_filename = f"{os.path.basename(video.filename).replace('.', '_')}_thumb.jpg"
+            # 如果已有缩略图，先删除旧文件
+            if video.thumbnail_path:
+                old_thumbnail_abs_path = os.path.join(project_root, video.thumbnail_path)
+                if os.path.exists(old_thumbnail_abs_path):
+                    try:
+                        os.remove(old_thumbnail_abs_path)
+                        print(f"Deleted old thumbnail: {old_thumbnail_abs_path}")
+                    except Exception as e:
+                        print(f"Failed to delete old thumbnail {old_thumbnail_abs_path}: {str(e)}")
+
+            # 生成缩略图文件名，使用视频文件的完整路径hash来避免重名
+            import hashlib
+            path_hash = hashlib.md5(video.filepath.encode()).hexdigest()[:8]
+            video_name = os.path.splitext(os.path.basename(video.filename))[0]
+            thumbnail_filename = f"{video_name}_{path_hash}_thumb.jpg"
             thumbnail_path = os.path.join(thumbnails_dir, thumbnail_filename)
             
             # 读取并保存文件
@@ -243,8 +393,10 @@ class VideoService:
             with open(thumbnail_path, "wb") as f:
                 f.write(content)
             
-            # 更新数据库中的缩略图路径
-            video.thumbnail_path = thumbnail_path
+            # 更新数据库中的缩略图路径（存储相对路径）
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+            video.thumbnail_path = os.path.relpath(thumbnail_path, project_root)
+            video.thumbnail_generated = True
             video.updated_at = datetime.now()
             db.commit()
             
@@ -252,6 +404,80 @@ class VideoService:
             
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to save thumbnail: {str(e)}")
+
+    @staticmethod
+    def cleanup_orphaned_thumbnails(db: Session) -> dict:
+        """清理孤立的缩略图文件"""
+        try:
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+            thumbnails_dir = os.path.join(project_root, 'thumbnails')
+            
+            if not os.path.exists(thumbnails_dir):
+                return {"success": True, "message": "缩略图目录不存在", "cleaned_count": 0, "cleaned_size": 0}
+            
+            # 获取所有缩略图文件
+            thumbnail_files = []
+            for file in os.listdir(thumbnails_dir):
+                if file.endswith('_thumb.jpg'):
+                    thumbnail_files.append(file)
+            
+            if not thumbnail_files:
+                return {"success": True, "message": "没有找到缩略图文件", "cleaned_count": 0, "cleaned_size": 0}
+            
+            # 获取数据库中的所有视频记录
+            videos = db.query(Video).all()
+            
+            # 生成所有期望的缩略图文件名
+            expected_thumbnails = set()
+            db_thumbnail_paths = set()
+            
+            for video in videos:
+                # 根据视频信息生成期望的缩略图文件名
+                import hashlib
+                path_hash = hashlib.md5(video.filepath.encode()).hexdigest()[:8]
+                video_name = os.path.splitext(video.filename)[0]
+                expected_name = f"{video_name}_{path_hash}_thumb.jpg"
+                expected_thumbnails.add(expected_name)
+                
+                # 如果数据库中有缩略图路径，也加入到期望列表中
+                if video.thumbnail_path:
+                    db_thumbnail_name = os.path.basename(video.thumbnail_path)
+                    db_thumbnail_paths.add(db_thumbnail_name)
+            
+            # 合并期望的缩略图文件名
+            all_expected = expected_thumbnails.union(db_thumbnail_paths)
+            
+            # 找出并删除孤立的缩略图文件
+            cleaned_count = 0
+            cleaned_size = 0
+            
+            for thumbnail_file in thumbnail_files:
+                if thumbnail_file not in all_expected:
+                    file_path = os.path.join(thumbnails_dir, thumbnail_file)
+                    if os.path.exists(file_path):
+                        try:
+                            file_size = os.path.getsize(file_path)
+                            os.remove(file_path)
+                            cleaned_count += 1
+                            cleaned_size += file_size
+                            print(f"Deleted orphaned thumbnail: {thumbnail_file}")
+                        except Exception as e:
+                            print(f"Failed to delete orphaned thumbnail {thumbnail_file}: {str(e)}")
+            
+            return {
+                "success": True,
+                "message": f"清理完成，删除了 {cleaned_count} 个孤立的缩略图文件",
+                "cleaned_count": cleaned_count,
+                "cleaned_size": cleaned_size
+            }
+            
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"清理失败: {str(e)}",
+                "cleaned_count": 0,
+                "cleaned_size": 0
+            }
 
     @staticmethod
     def delete_video(db: Session, video_id: int) -> bool:
@@ -268,7 +494,10 @@ class VideoService:
                 return False
             thumbnail_path = video.thumbnail_path
             if thumbnail_path:
-                ok, msg = VideoService._safe_remove(thumbnail_path)
+                # 构建缩略图的绝对路径
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+                thumbnail_abs_path = os.path.join(project_root, thumbnail_path)
+                ok, msg = VideoService._safe_remove(thumbnail_abs_path)
                 if not ok:
                     print(msg)
                     return False
